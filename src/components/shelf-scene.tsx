@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Text } from "@react-three/drei";
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import type { Book, Shelf } from "@/lib/domain";
 
 type Props = {
@@ -11,6 +11,21 @@ type Props = {
   selectedShelfId: string | null;
   onSelect: (shelfId: string) => void;
 };
+
+// drei's <Text> suspends until its font has loaded. This boundary keeps that
+// inside the scene, so the shelves are drawn right away and only the label waits.
+// Without it the suspension leaves <Canvas>: React hides the whole canvas and
+// shows it again, and in development (StrictMode) showing it again re-runs the
+// Canvas cleanup, which drops the WebGL context and leaves the scene blank.
+function ShelfLabel({ children }: { children: string }) {
+  return (
+    <Suspense fallback={null}>
+      <Text position={[0, 1.82, 0]} fontSize={0.18} color="#3f2d25" anchorX="center">
+        {children}
+      </Text>
+    </Suspense>
+  );
+}
 
 function Shelves({ shelves, books, selectedShelfId, onSelect }: Props) {
   const visible = shelves;
@@ -64,9 +79,7 @@ function Shelves({ shelves, books, selectedShelfId, onSelect }: Props) {
                 </mesh>
               );
             })}
-            <Text position={[0, 1.82, 0]} fontSize={0.18} color="#3f2d25" anchorX="center">
-              {shelf.name}
-            </Text>
+            <ShelfLabel>{shelf.name}</ShelfLabel>
           </group>
         );
       })}
