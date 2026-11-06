@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+*.tsbuildinfo
+artifacts/*
+!artifacts/3d-library-demo.xlsx
+coverage/
