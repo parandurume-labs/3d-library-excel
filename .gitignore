@@ -7,3 +7,7 @@ out/
 artifacts/*
 !artifacts/3d-library-demo.xlsx
 coverage/
+.agents
+docs/playbooks/
+AGENTS.md
+.gstack/

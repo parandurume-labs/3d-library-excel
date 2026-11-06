@@ -110,6 +110,11 @@ export default function LibraryApp() {
   const [showBookForm, setShowBookForm] = useState(false);
   const [showUserForm, setShowUserForm] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
+  const actorRole = snapshot?.actor.role;
+
+  useEffect(() => {
+    if (actorRole !== "admin" && tab === "admin") setTab("explore");
+  }, [actorRole, tab]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -264,8 +269,10 @@ export default function LibraryApp() {
           <button className={tab === "explore" ? "active" : ""} onClick={() => { setTab("explore"); setNavOpen(false); }}><Library />{copy.exploreShelves}</button>
           <button className={tab === "library3d" ? "active" : ""} onClick={() => { setTab("library3d"); setNavOpen(false); }}><Box />{copy.library3d}</button>
           <button className={tab === "my-library" ? "active" : ""} onClick={() => { setTab("my-library"); setNavOpen(false); }}><BookOpen />{copy.myLibrary} <small>{ownLoans.filter((loan) => loan.status !== "returned" && loan.status !== "rejected").length}</small></button>
-          <p>{copy.manage}</p>
-          <button className={tab === "admin" ? "active" : ""} disabled={snapshot.actor.role !== "admin"} onClick={() => { setTab("admin"); setNavOpen(false); }}><ShieldCheck />{copy.adminDesk}</button>
+          {snapshot.actor.role === "admin" && <>
+            <p>{copy.manage}</p>
+            <button className={tab === "admin" ? "active" : ""} onClick={() => { setTab("admin"); setNavOpen(false); }}><ShieldCheck />{copy.adminDesk}</button>
+          </>}
           <p>{copy.collection}</p>
           <button onClick={() => { setTab("explore"); setQuery(""); setSelectedShelfId(null); setClassFilter(null); setNavOpen(false); }}><Layers3 />{copy.allBooks} <small>{snapshot.state.books.length}</small></button>
           <button onClick={() => { setTab("explore"); setClassFilter(9); setNavOpen(false); }}><Clock3 />{copy.recentlyAdded}</button>
