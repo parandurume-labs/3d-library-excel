@@ -75,6 +75,32 @@ describe("LibraryApp", () => {
     expect(document.documentElement.lang).toBe("ko");
   });
 
+  it("shows the administration menu only for administrators and leaves it when the role changes", async () => {
+    const state = createDemoState();
+    vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const actorRole = new Headers(init?.headers).get("x-demo-user") === "admin" ? "admin" : "member";
+      return new Response(JSON.stringify({
+        state,
+        mode: "demo",
+        schemaVersion: 1,
+        actor: { id: actorRole === "admin" ? "user-demo-admin" : DEMO_MEMBER_ID, role: actorRole },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+
+    render(<LibraryApp />);
+    await screen.findByText("LOCAL DEMO DATA");
+    expect(screen.queryByRole("button", { name: "Admin desk" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Demo identity"), { target: { value: "admin" } });
+    const adminDesk = await screen.findByRole("button", { name: "Admin desk" });
+    fireEvent.click(adminDesk);
+    expect(await screen.findByRole("heading", { name: "Admin desk" })).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Demo identity"), { target: { value: "member" } });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Admin desk" })).not.toBeInTheDocument());
+    expect(await screen.findByRole("heading", { name: "Find your next great read." })).toBeVisible();
+  });
+
   it("sends explicit null values when Korean metadata is cleared", async () => {
     const state = createDemoState();
     const actions: unknown[] = [];
