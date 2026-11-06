@@ -144,6 +144,34 @@ export const COPY = {
     savedSuccessfully: "Saved successfully.",
     updateFailed: "Update failed",
     viewBookLocation: "Show this book's location on the 3D shelf",
+    library3d: "3D library",
+    library3dEyebrow: "WALK THE STACKS",
+    library3dTitle: "Stand in front of any shelf.",
+    library3dDescription: "Pick a shelf to step up to it, point at a book to see it, and find any book from its details.",
+    open3dLibrary: "Open 3D library",
+    viewOnShelf: "View on 3D shelf",
+    showingLocation: "Showing location",
+    wholeLibrary: "Whole library",
+    shelfLeft: "Shelf to the left",
+    shelfRight: "Shelf to the right",
+    chooseShelf: "Choose a shelf",
+    overviewHint: "Select a shelf to stand in front of it",
+    standingHint: "Hover a book for details · Esc for the whole library",
+    touchHint: "Tap a book for details",
+    locatedBook: "LOCATED BOOK",
+    locatedPosition: "{shelf}, level {level} from the top, {column} from the left",
+    details: "Details",
+    clearMarker: "Clear marker",
+    onLoanNotOnShelf: "On loan now, so it is not on the shelf. This is where it will be returned.",
+    approximatePosition: "Bin \"{bin}\" could not be placed exactly, so this position is approximate.",
+    notShelved: "Not shelved yet",
+    showingOfTotal: "Showing {shown} of {total} books",
+    seeAllInList: "See all in the list",
+    noWebgl: "This browser cannot show the 3D view. Use the shelf picker and the location text instead.",
+    nowInFront: "Now in front of {shelf}.",
+    shelfBookCount: "{count} books",
+    expandDetails: "Show details",
+    closeCard: "Close book card",
   },
   ko: {
     openingLibrary: "두루미 도서관 여는 중",
@@ -286,6 +314,34 @@ export const COPY = {
     savedSuccessfully: "저장되었습니다.",
     updateFailed: "변경 사항을 저장하지 못했습니다.",
     viewBookLocation: "3D 서가에서 이 도서의 위치 보기",
+    library3d: "3D 도서관",
+    library3dEyebrow: "서가 사이를 걷다",
+    library3dTitle: "원하는 서가 앞에 서 보세요.",
+    library3dDescription: "서가를 고르면 그 앞으로 이동하고, 책을 가리키면 정보가 보입니다. 도서 상세 정보에서 위치를 누르면 여기서 찾아 드립니다.",
+    open3dLibrary: "3D 도서관에서 둘러보기",
+    viewOnShelf: "3D 서가에서 보기",
+    showingLocation: "위치 표시 중",
+    wholeLibrary: "전체 보기",
+    shelfLeft: "왼쪽 서가",
+    shelfRight: "오른쪽 서가",
+    chooseShelf: "서가 선택",
+    overviewHint: "서가를 누르면 그 앞으로 이동합니다",
+    standingHint: "책에 마우스를 올리면 정보가 보입니다 · Esc로 전체 보기",
+    touchHint: "책을 누르면 정보가 보입니다",
+    locatedBook: "찾은 책",
+    locatedPosition: "{shelf}, 위에서 {level}번째 단, 왼쪽에서 {column}번째",
+    details: "상세 정보",
+    clearMarker: "위치 표시 해제",
+    onLoanNotOnShelf: "지금은 대출 중이라 서가에 없습니다. 반납되면 꽂힐 자리입니다.",
+    approximatePosition: "칸 정보({bin})대로 놓을 수 없어 대략적인 위치로 표시합니다.",
+    notShelved: "서가 미배정",
+    showingOfTotal: "{total}권 중 {shown}권 표시",
+    seeAllInList: "목록에서 모두 보기",
+    noWebgl: "이 브라우저에서는 3D 화면을 표시할 수 없습니다. 서가 선택과 위치 안내를 이용하세요.",
+    nowInFront: "{shelf} 앞으로 이동했습니다.",
+    shelfBookCount: "{count}권",
+    expandDetails: "상세 정보 펼치기",
+    closeCard: "책 카드 닫기",
   },
 } as const;
 
@@ -316,4 +372,13 @@ export function getLocationDisplay(location: Location, locale: Locale) {
   const names = ["중앙홀", "학습관", "자료보관관"];
   const index = Number.parseInt(location.id.slice(9), 10) - 1;
   return names[index] ?? location.name;
+}
+
+/** Fills "{name}" placeholders in a copy string. */
+export function fill(template: string, values: Record<string, string | number>) {
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => (key in values ? String(values[key]) : match));
+}
+
+export function floorLabel(floor: number | undefined, locale: Locale) {
+  return floor === undefined ? "" : locale === "ko" ? `${floor}층` : `Floor ${floor}`;
 }

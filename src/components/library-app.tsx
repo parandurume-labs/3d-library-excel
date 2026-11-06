@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Bell,
   BookOpen,
+  Box,
   CalendarDays,
   Check,
   ChevronLeft,
@@ -28,7 +29,8 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Actor, Book, LibraryAction, LibrarySnapshot, Loan, Reservation, Shelf, User } from "@/lib/domain";
 import { CLASS_LABELS } from "@/lib/domain";
-import { COPY, getBookDisplay, getClassLabel, getLocationDisplay, getShelfDisplay, type Copy, type Locale } from "@/lib/i18n";
+import Library3DPage from "./library-3d-page";
+import { COPY, floorLabel, getBookDisplay, getClassLabel, getLocationDisplay, getShelfDisplay, type Copy, type Locale } from "@/lib/i18n";
 
 const ShelfScene = dynamic(() => import("./shelf-scene"), {
   ssr: false,
@@ -36,7 +38,7 @@ const ShelfScene = dynamic(() => import("./shelf-scene"), {
 });
 
 type LoadedSnapshot = LibrarySnapshot & { actor: Actor };
-type Tab = "explore" | "my-library" | "admin";
+type Tab = "explore" | "library3d" | "my-library" | "admin";
 type StatusTone = "available" | "borrowed" | "requested";
 
 function statusFor(book: Book, snapshot: LoadedSnapshot, copy: Copy = COPY.en): { label: string; tone: StatusTone } {
@@ -63,10 +65,6 @@ function dueLabel(loan: Loan, locale: Locale, copy: Copy) {
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-}
-
-function floorLabel(floor: number | undefined, locale: Locale) {
-  return floor === undefined ? "" : locale === "ko" ? `${floor}층` : `Floor ${floor}`;
 }
 
 function workflowStatus(value: string, locale: Locale) {
@@ -101,6 +99,11 @@ export default function LibraryApp() {
   const [selectedShelfId, setSelectedShelfId] = useState<string | null>(null);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [locatedBookId, setLocatedBookId] = useState<string | null>(null);
+  /** The shelf the visitor stands in front of on the 3D library page; null is the whole-library view. */
+  const [focusShelfId, setFocusShelfId] = useState<string | null>(null);
+  const [viewRequest, setViewRequest] = useState(0);
+  /** On narrow screens the drawer folds into a bar at the bottom while the 3D page shows a location. */
+  const [drawerCollapsed, setDrawerCollapsed] = useState(false);
   const [page, setPage] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -155,6 +158,33 @@ export default function LibraryApp() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  /** Every request moves the camera, even to the shelf it is already at. */
+  const focusShelf = useCallback((shelfId: string | null) => {
+    setFocusShelfId(shelfId);
+    setViewRequest((count) => count + 1);
+  }, []);
+
+  // Esc steps back out: from a shelf to the whole library, then closes the book details.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || showBookForm || showUserForm) return;
+      if (tab === "library3d" && focusShelfId) focusShelf(null);
+      else if (selectedBookId) setSelectedBookId(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focusShelf, focusShelfId, selectedBookId, showBookForm, showUserForm, tab]);
+
+  const openBook = useCallback((bookId: string) => {
+    setSelectedBookId(bookId);
+    setDrawerCollapsed(false);
+  }, []);
+
+  const statusOf = useCallback(
+    (book: Book) => (snapshot ? statusFor(book, snapshot, COPY[locale]) : { label: "", tone: "available" as StatusTone }),
+    [locale, snapshot],
+  );
+
   const filteredBooks = useMemo(() => {
     if (!snapshot) return [];
     const needle = query.trim().toLowerCase();
@@ -197,9 +227,11 @@ export default function LibraryApp() {
   }
 
   const modeLabel = snapshot.mode === "demo" ? copy.localDemo : copy.oneDriveExcel;
+  const drawerDocked = tab === "library3d" && Boolean(selectedBook);
+  const shellClass = ["app-shell", drawerDocked && "drawer-docked", drawerDocked && drawerCollapsed && "drawer-collapsed"].filter(Boolean).join(" ");
 
   return (
-    <div className="app-shell">
+    <div className={shellClass}>
       <header className="topbar">
         <button className="icon-button mobile-only" aria-label={copy.openMenu} onClick={() => setNavOpen(true)}><Menu /></button>
         <div className="wordmark"><span className="logo-mark"><BookOpen /></span><div><strong>DURUME</strong><span>3D LIBRARY</span></div></div>
@@ -230,6 +262,7 @@ export default function LibraryApp() {
         <nav>
           <p>{copy.library}</p>
           <button className={tab === "explore" ? "active" : ""} onClick={() => { setTab("explore"); setNavOpen(false); }}><Library />{copy.exploreShelves}</button>
+          <button className={tab === "library3d" ? "active" : ""} onClick={() => { setTab("library3d"); setNavOpen(false); }}><Box />{copy.library3d}</button>
           <button className={tab === "my-library" ? "active" : ""} onClick={() => { setTab("my-library"); setNavOpen(false); }}><BookOpen />{copy.myLibrary} <small>{ownLoans.filter((loan) => loan.status !== "returned" && loan.status !== "rejected").length}</small></button>
           <p>{copy.manage}</p>
           <button className={tab === "admin" ? "active" : ""} disabled={snapshot.actor.role !== "admin"} onClick={() => { setTab("admin"); setNavOpen(false); }}><ShieldCheck />{copy.adminDesk}</button>
@@ -258,7 +291,10 @@ export default function LibraryApp() {
             <section className="scene-card">
               <div className="scene-toolbar">
                 <div><span className="live-dot" /><strong>{copy.interactiveFloorPlan}</strong></div>
-                <div className="scene-location"><MapPin />{selectedShelf ? `${getShelfDisplay(selectedShelf, locale)} · ${floorLabel(selectedShelf.floor, locale)}` : copy.allLocations}<SlidersHorizontal /></div>
+                <div className="scene-toolbar-actions">
+                  <div className="scene-location"><MapPin />{selectedShelf ? `${getShelfDisplay(selectedShelf, locale)} · ${floorLabel(selectedShelf.floor, locale)}` : copy.allLocations}<SlidersHorizontal /></div>
+                  <button className="open-3d" aria-label={copy.open3dLibrary} onClick={() => { focusShelf(selectedShelfId); setTab("library3d"); }}><Box /><span>{copy.open3dLibrary}</span></button>
+                </div>
               </div>
               <div className="scene-wrap">
                 <ShelfScene shelves={snapshot.state.shelves} books={snapshot.state.books} locale={locale} selectedShelfId={selectedShelfId} highlightedBookId={locatedBookId} onSelect={(id) => setSelectedShelfId(selectedShelfId === id ? null : id)} />
@@ -288,7 +324,7 @@ export default function LibraryApp() {
                 const shelf = snapshot.state.shelves.find((item) => item.id === book.shelfId);
                 const display = getBookDisplay(book, locale);
                 return (
-                  <button className="book-card" key={book.id} onClick={() => { setSelectedBookId(book.id); setLocatedBookId(null); }}>
+                  <button className="book-card" key={book.id} onClick={() => { openBook(book.id); setLocatedBookId(null); }}>
                     <div className="book-cover" style={{ background: book.coverColor }}>
                       <span className="book-class">{classSystem === "ddc" ? book.ddc : book.kdc}</span>
                       <BookOpen size={28} />
@@ -314,6 +350,23 @@ export default function LibraryApp() {
           </>
         )}
 
+        {tab === "library3d" && (
+          <Library3DPage
+            state={snapshot.state}
+            locale={locale}
+            copy={copy}
+            classSystem={classSystem}
+            focusShelfId={focusShelfId}
+            viewRequest={viewRequest}
+            onFocusShelf={focusShelf}
+            locatedBookId={locatedBookId}
+            onClearLocated={() => setLocatedBookId(null)}
+            onOpenBook={openBook}
+            onShowShelfInList={(shelfId) => { setQuery(""); setClassFilter(null); setSelectedShelfId(shelfId); setTab("explore"); }}
+            statusOf={statusOf}
+          />
+        )}
+
         {tab === "my-library" && (
           <MemberDashboard snapshot={snapshot} ownLoans={ownLoans} ownReservations={ownReservations} busy={busy} act={act} locale={locale} copy={copy} />
         )}
@@ -337,17 +390,29 @@ export default function LibraryApp() {
         const shelf = snapshot.state.shelves.find((item) => item.id === selectedBook.shelfId);
         const location = snapshot.state.locations.find((item) => item.id === selectedBook.locationId);
         const status = statusFor(selectedBook, snapshot, copy);
+        const locating = tab === "library3d" && locatedBookId === selectedBook.id;
         return (
-          <div className="drawer-backdrop" onClick={() => setSelectedBookId(null)}>
-            <aside className="book-drawer" onClick={(event) => event.stopPropagation()}>
+          // On the 3D page the drawer is docked: no dimming, and the scene stays usable beside it.
+          <div className={`drawer-backdrop${drawerDocked ? " docked" : ""}`} onClick={() => { if (!drawerDocked) setSelectedBookId(null); }}>
+            <aside className={`book-drawer${drawerDocked ? " docked" : ""}${drawerDocked && drawerCollapsed ? " collapsed" : ""}`} onClick={(event) => event.stopPropagation()}>
+              <div className="drawer-bar">
+                <div><strong>{display.title}</strong><span>{shelf ? `${getShelfDisplay(shelf, locale)} · ${copy.bin} ${selectedBook.bin}` : copy.notShelved}</span></div>
+                <button className="secondary-button" onClick={() => setDrawerCollapsed(false)}>{copy.expandDetails}</button>
+              </div>
               <button className="drawer-close icon-button" aria-label={copy.closeDetails} onClick={() => setSelectedBookId(null)}><X /></button>
               <div className="drawer-cover" style={{ background: selectedBook.coverColor }}><BookOpen /><span>{classSystem === "ddc" ? selectedBook.ddc : selectedBook.kdc}</span><strong>{display.title}</strong></div>
               <span className="eyebrow">{classSystem.toUpperCase()} · {getClassLabel(selectedBook.classIndex, locale) ?? CLASS_LABELS[selectedBook.classIndex]}</span>
               <h2>{display.title}</h2>
               <p className="drawer-author">{display.author} · {selectedBook.year}</p>
               <div className="code-pills"><span>DDC {selectedBook.ddc}</span><span>KDC {selectedBook.kdc}</span></div>
-              <button className="detail-location" aria-label={`${copy.viewBookLocation}: ${shelf ? getShelfDisplay(shelf, locale) : ""}`} onClick={() => { setSelectedShelfId(selectedBook.shelfId); setLocatedBookId(selectedBook.id); }}>
-                <MapPin /><div><strong>{shelf ? getShelfDisplay(shelf, locale) : ""}</strong><span>{location ? getLocationDisplay(location, locale) : ""} · {floorLabel(location?.floor, locale)} · {copy.bin} {selectedBook.bin}</span></div><span className="location-action">↗</span>
+              <button
+                className={`detail-location${locating ? " locating" : ""}`}
+                title={copy.viewBookLocation}
+                disabled={!shelf}
+                onClick={() => { setLocatedBookId(selectedBook.id); focusShelf(selectedBook.shelfId); setDrawerCollapsed(true); setTab("library3d"); }}
+              >
+                <MapPin /><div><strong>{shelf ? getShelfDisplay(shelf, locale) : copy.notShelved}</strong><span>{location ? getLocationDisplay(location, locale) : ""} · {floorLabel(location?.floor, locale)} · {copy.bin} {selectedBook.bin}</span></div>
+                {shelf && <span className="location-action">{locating ? copy.showingLocation : `${copy.viewOnShelf} ↗`}</span>}
               </button>
               <span className={`availability large ${status.tone}`}><i />{status.label}</span>
               <p className="demo-note">{selectedBook.demo ? copy.demoNote : copy.catalogNote}</p>

@@ -13,6 +13,10 @@ vi.mock("@react-three/fiber", () => ({
   // The real <Canvas> rethrows a suspension of its children to its own parent.
   // Rendering children in place gives the same result: it reaches the boundary outside.
   Canvas: ({ children }: { children: React.ReactNode }) => <div data-testid="canvas">{children}</div>,
+  // Hooks that need a real canvas. The camera never moves in these tests.
+  useFrame: () => {},
+  useThree: (select: (state: { camera: object; size: { width: number; height: number } }) => unknown) =>
+    select({ camera: {}, size: { width: 800, height: 450 } }),
 }));
 
 vi.mock("@react-three/drei", () => ({
@@ -29,11 +33,33 @@ describe("ShelfScene", () => {
     // three.js elements (<mesh>, <boxGeometry>, ...) are not DOM elements, so
     // react-dom warns about every one of them when they are rendered in jsdom.
     vi.spyOn(console, "error").mockImplementation(() => {});
+    // jsdom has no WebGL. Pretend it does, so the scene is drawn instead of its fallback.
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({} as RenderingContext);
   });
 
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+  });
+
+  it("shows the fallback instead of the scene when the browser has no WebGL", () => {
+    vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue(null);
+    const { shelves, books } = createDemoState();
+
+    render(
+      <ShelfScene
+        shelves={shelves}
+        books={books}
+        locale="en"
+        selectedShelfId={null}
+        highlightedBookId={null}
+        onSelect={() => {}}
+        fallback={<p>No 3D here</p>}
+      />,
+    );
+
+    expect(screen.getByText("No 3D here")).toBeInTheDocument();
+    expect(screen.queryByTestId("canvas")).not.toBeInTheDocument();
   });
 
   it("keeps the canvas mounted and the shelves drawn while the label font is loading", () => {

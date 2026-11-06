@@ -1,13 +1,25 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDemoState, DEMO_MEMBER_ID } from "@/lib/demo-data";
 
+type SceneProps = {
+  selectedShelfId: string | null;
+  highlightedBookId: string | null;
+  viewRequest?: number;
+  onBookClick?: (bookId: string, pointerType: string) => void;
+};
+
+// Stands in for the WebGL scene. The buttons play the part of a click on a book in the scene.
 vi.mock("next/dynamic", () => ({
-  default: () => ({ selectedShelfId, highlightedBookId }: { selectedShelfId: string | null; highlightedBookId: string | null }) => (
-    <div data-testid="shelf-scene" data-selected-shelf={selectedShelfId ?? ""} data-highlighted-book={highlightedBookId ?? ""}>3D shelf scene</div>
+  default: () => ({ selectedShelfId, highlightedBookId, viewRequest, onBookClick }: SceneProps) => (
+    <div data-testid="shelf-scene" data-selected-shelf={selectedShelfId ?? ""} data-highlighted-book={highlightedBookId ?? ""} data-view-request={viewRequest ?? ""}>
+      3D shelf scene
+      {onBookClick && <button onClick={() => onBookClick("book-0016", "mouse")}>Scene: click book-0016</button>}
+      {onBookClick && <button onClick={() => onBookClick("book-0016", "touch")}>Scene: tap book-0016</button>}
+    </div>
   ),
 }));
 
@@ -95,16 +107,80 @@ describe("LibraryApp", () => {
     expect(actions[0]).toMatchObject({ type: "book.update", book: { titleKo: null, authorKo: null } });
   });
 
-  it("keeps details open and highlights the selected book's shelf location", async () => {
+  it("locates a book on the 3D library page and keeps its details open", async () => {
     render(<LibraryApp />);
     await screen.findByText("LOCAL DEMO DATA");
     fireEvent.change(screen.getByLabelText("Search books"), { target: { value: "Hidden Atlas 1" } });
     const titles = await screen.findAllByText("Hidden Atlas 1");
     fireEvent.click(titles.at(-1)!);
-    fireEvent.click(screen.getByRole("button", { name: /Show this book's location/ }));
+    fireEvent.click(screen.getByRole("button", { name: /View on 3D shelf/ }));
 
+    expect(screen.getByRole("heading", { name: "Stand in front of any shelf." })).toBeVisible();
     expect(screen.getByRole("button", { name: "Close details" })).toBeVisible();
+    expect(screen.getByRole("button", { name: /Showing location/ })).toBeVisible();
     expect(screen.getByTestId("shelf-scene")).toHaveAttribute("data-selected-shelf", "shelf-01");
     expect(screen.getByTestId("shelf-scene")).toHaveAttribute("data-highlighted-book", "book-0001");
+    // The canvas is invisible to screen readers, so the banner says where the book is.
+    const banner = screen.getByRole("status");
+    expect(within(banner).getByText("Hidden Atlas 1")).toBeVisible();
+    expect(within(banner).getByText("Shelf A1, level 1 from the top, 1 from the left")).toBeVisible();
+
+    // Pressing it again, after looking around, must walk the visitor back to the front of the shelf.
+    const before = Number(screen.getByTestId("shelf-scene").dataset.viewRequest);
+    fireEvent.click(screen.getByRole("button", { name: /Showing location/ }));
+    expect(Number(screen.getByTestId("shelf-scene").dataset.viewRequest)).toBeGreaterThan(before);
+
+    fireEvent.click(within(banner).getByRole("button", { name: "Clear marker" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByTestId("shelf-scene")).toHaveAttribute("data-highlighted-book", "");
+  });
+
+  it("opens the 3D library and moves between the shelves of a row", async () => {
+    render(<LibraryApp />);
+    await screen.findByText("LOCAL DEMO DATA");
+    fireEvent.click(screen.getByRole("button", { name: "3D library" }));
+    expect(screen.getByTestId("shelf-scene")).toHaveAttribute("data-selected-shelf", "");
+
+    fireEvent.change(screen.getByLabelText("Choose a shelf"), { target: { value: "shelf-05" } });
+    expect(screen.getByTestId("shelf-scene")).toHaveAttribute("data-selected-shelf", "shelf-05");
+    // Shelf 5 ends the first row, so there is nothing to its right.
+    expect(screen.getByRole("button", { name: "Shelf to the right" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Shelf to the left" }));
+    expect(screen.getByTestId("shelf-scene")).toHaveAttribute("data-selected-shelf", "shelf-04");
+    expect(screen.getByText("Now in front of Shelf D4.")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.getByTestId("shelf-scene")).toHaveAttribute("data-selected-shelf", "");
+  });
+
+  it("opens the 3D library from the home scene at the shelf already chosen there", async () => {
+    render(<LibraryApp />);
+    await screen.findByText("LOCAL DEMO DATA");
+    fireEvent.click(screen.getByRole("button", { name: "Open 3D library" }));
+    expect(screen.getByRole("heading", { name: "Stand in front of any shelf." })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Shelf to the left" })).toBeDisabled();
+  });
+
+  it("opens details for a book clicked in the scene, and a card first on touch", async () => {
+    render(<LibraryApp />);
+    await screen.findByText("LOCAL DEMO DATA");
+    fireEvent.click(screen.getByRole("button", { name: "3D library" }));
+    fireEvent.change(screen.getByLabelText("Choose a shelf"), { target: { value: "shelf-01" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Scene: tap book-0016" }));
+    expect(screen.queryByRole("heading", { level: 2 })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+    expect(screen.getByRole("button", { name: "Close details" })).toBeVisible();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    // Esc first steps back from the shelf to the whole library; the details stay open.
+    expect(screen.getByTestId("shelf-scene")).toHaveAttribute("data-selected-shelf", "");
+    expect(screen.getByRole("button", { name: "Close details" })).toBeVisible();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Close details" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Choose a shelf"), { target: { value: "shelf-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Scene: click book-0016" }));
+    expect(screen.getByRole("button", { name: "Close details" })).toBeVisible();
   });
 });
