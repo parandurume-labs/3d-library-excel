@@ -49,8 +49,13 @@ function parseRow(headers: string[], values: unknown[], entity: EntityName): Row
   return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined));
 }
 
-export function stateToRow(entity: EntityName, row: Row): unknown[] {
-  return REQUIRED_HEADERS[entity].map((header) => row[header] ?? "");
+const KNOWN_HEADERS: Record<EntityName, string[]> = {
+  ...REQUIRED_HEADERS,
+  books: ["id", "version", "title", "author", "titleKo", "authorKo", "year", "ddc", "kdc", "classIndex", "locationId", "shelfId", "bin", "coverColor", "demo"],
+};
+
+export function stateToRow(entity: EntityName, row: Row, headers = KNOWN_HEADERS[entity]): unknown[] {
+  return headers.map((header) => row[header] ?? "");
 }
 
 export class ExcelGraphRepository implements LibraryRepository {
@@ -104,22 +109,26 @@ export class ExcelGraphRepository implements LibraryRepository {
     );
   }
 
-  private async readSnapshot(sessionId?: string): Promise<LibrarySnapshot> {
+  private async readSnapshot(sessionId?: string): Promise<{ snapshot: LibrarySnapshot; headers: Record<EntityName, string[]>; rawRows: Record<EntityName, Row[]> }> {
     const ranges = await Promise.all(
       Object.keys(TABLE_NAMES).map((key) => this.tableRows(key as EntityName, sessionId)),
     );
     const state = {} as LibraryState;
+    const tableHeaders = {} as Record<EntityName, string[]>;
+    const rawRows = {} as Record<EntityName, Row[]>;
     Object.keys(TABLE_NAMES).forEach((name, index) => {
       const entity = name as EntityName;
       const [headerRow, ...values] = ranges[index].values;
       const headers = headerRow?.map(String) ?? [];
+      tableHeaders[entity] = headers;
       const missing = REQUIRED_HEADERS[entity].filter((header) => !headers.includes(header));
       if (missing.length) {
         throw new LibraryError(`Table ${TABLE_NAMES[entity]} is missing columns: ${missing.join(", ")}.`, "SCHEMA_ERROR", 422);
       }
-      (state[entity] as Row[]) = values
+      rawRows[entity] = values
         .filter((row) => row.some((cell) => cell !== "" && cell !== null))
         .map((row) => parseRow(headers, row, entity));
+      (state[entity] as Row[]) = rawRows[entity];
     });
     let parsed;
     try {
@@ -129,17 +138,18 @@ export class ExcelGraphRepository implements LibraryRepository {
     }
     const schema = Number(parsed.settings.find((setting) => setting.key === "schemaVersion")?.value ?? 0);
     if (schema !== 1) throw new LibraryError(`Unsupported workbook schema ${schema}; expected 1.`, "SCHEMA_ERROR", 422);
-    return { state: parsed, mode: "graph", schemaVersion: schema };
+    return { snapshot: { state: parsed, mode: "graph", schemaVersion: schema }, headers: tableHeaders, rawRows };
   }
 
   async getSnapshot(): Promise<LibrarySnapshot> {
-    return this.readSnapshot();
+    return (await this.readSnapshot()).snapshot;
   }
 
   async commit(next: LibraryState, expectedVersions: Record<string, number>): Promise<void> {
     const sessionId = await this.openSession();
     try {
-      const current = (await this.readSnapshot(sessionId)).state;
+      const workbookSnapshot = await this.readSnapshot(sessionId);
+      const current = workbookSnapshot.snapshot.state;
       const currentById = Object.values(current).flat().reduce<Record<string, { version: number }>>((all, item) => {
         all[item.id] = item;
         return all;
@@ -168,7 +178,7 @@ export class ExcelGraphRepository implements LibraryRepository {
           await this.request(`/tables/${TABLE_NAMES[entity]}/rows/itemAt(${item.index})/range`, {
             method: "PATCH",
             headers: { "workbook-session-id": sessionId },
-            body: JSON.stringify({ values: [stateToRow(entity, item.row)] }),
+            body: JSON.stringify({ values: [stateToRow(entity, { ...workbookSnapshot.rawRows[entity][item.index], ...item.row }, workbookSnapshot.headers[entity])] }),
           });
         }
         for (const index of deleted.sort((a, b) => b - a)) {
@@ -181,7 +191,7 @@ export class ExcelGraphRepository implements LibraryRepository {
           await this.request(`/tables/${TABLE_NAMES[entity]}/rows/add`, {
             method: "POST",
             headers: { "workbook-session-id": sessionId },
-            body: JSON.stringify({ values: added.map((row) => stateToRow(entity, row)) }),
+            body: JSON.stringify({ values: added.map((row) => stateToRow(entity, row, workbookSnapshot.headers[entity])) }),
           });
         }
       }

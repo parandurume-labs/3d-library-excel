@@ -28,22 +28,23 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Actor, Book, LibraryAction, LibrarySnapshot, Loan, Reservation, Shelf, User } from "@/lib/domain";
 import { CLASS_LABELS } from "@/lib/domain";
+import { COPY, getBookDisplay, getClassLabel, getLocationDisplay, getShelfDisplay, type Copy, type Locale } from "@/lib/i18n";
 
 const ShelfScene = dynamic(() => import("./shelf-scene"), {
   ssr: false,
-  loading: () => <div className="scene-loading">Building the shelves...</div>,
+  loading: () => <div className="scene-loading">Loading...</div>,
 });
 
 type LoadedSnapshot = LibrarySnapshot & { actor: Actor };
 type Tab = "explore" | "my-library" | "admin";
 type StatusTone = "available" | "borrowed" | "requested";
 
-function statusFor(book: Book, snapshot: LoadedSnapshot): { label: string; tone: StatusTone } {
+function statusFor(book: Book, snapshot: LoadedSnapshot, copy: Copy = COPY.en): { label: string; tone: StatusTone } {
   const loan = snapshot.state.loans.find((item) => item.bookId === book.id && ["requested", "approved", "overdue", "return_requested"].includes(item.status));
-  if (!loan) return { label: "Available", tone: "available" };
-  if (loan.status === "requested") return { label: "Approval pending", tone: "requested" };
+  if (!loan) return { label: copy.availableStatus, tone: "available" };
+  if (loan.status === "requested") return { label: copy.pendingStatus, tone: "requested" };
   const overdue = loan.status === "overdue" || Boolean(loan.dueAt && new Date(loan.dueAt).getTime() < Date.now());
-  return { label: overdue ? "Overdue" : "On loan", tone: "borrowed" };
+  return { label: overdue ? copy.overdueStatus : copy.onLoanStatus, tone: "borrowed" };
 }
 
 function isOverdue(loan: Loan) {
@@ -52,16 +53,37 @@ function isOverdue(loan: Loan) {
   );
 }
 
-function dueLabel(loan: Loan) {
-  if (!loan.dueAt) return "Awaiting approval";
+function dueLabel(loan: Loan, locale: Locale, copy: Copy) {
+  if (!loan.dueAt) return copy.awaitingApproval;
   const days = Math.ceil((new Date(loan.dueAt).getTime() - Date.now()) / 86_400_000);
-  if (days < 0) return `${Math.abs(days)} day${days === -1 ? "" : "s"} overdue`;
-  if (days === 0) return "Due today";
-  return `Due in ${days} day${days === 1 ? "" : "s"}`;
+  if (days < 0) return locale === "ko" ? `${Math.abs(days)}${copy.overdueFor}` : `${Math.abs(days)} ${Math.abs(days) === 1 ? copy.day : copy.days} ${copy.overdueFor}`;
+  if (days === 0) return copy.dueToday;
+  return locale === "ko" ? `${copy.dueIn} ${days}${copy.days}` : `${copy.dueIn} ${days} ${days === 1 ? copy.day : copy.days}`;
 }
 
 function initials(name: string) {
   return name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function floorLabel(floor: number | undefined, locale: Locale) {
+  return floor === undefined ? "" : locale === "ko" ? `${floor}층` : `Floor ${floor}`;
+}
+
+function workflowStatus(value: string, locale: Locale) {
+  if (locale !== "ko") return value.replace("_", " ");
+  const labels: Record<string, string> = {
+    requested: "신청",
+    approved: "대출 중",
+    overdue: "연체",
+    return_requested: "반납 신청",
+    returned: "반납 완료",
+    rejected: "반려",
+    waiting: "대기 중",
+    ready: "수령 가능",
+    fulfilled: "처리 완료",
+    cancelled: "취소",
+  };
+  return labels[value] ?? value;
 }
 
 export default function LibraryApp() {
@@ -70,12 +92,15 @@ export default function LibraryApp() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("explore");
+  const [locale, setLocale] = useState<Locale>("en");
+  const copy = COPY[locale];
   const [demoIdentity, setDemoIdentity] = useState<"member" | "admin">("member");
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState<number | null>(null);
   const [classSystem, setClassSystem] = useState<"ddc" | "kdc">("ddc");
   const [selectedShelfId, setSelectedShelfId] = useState<string | null>(null);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
+  const [locatedBookId, setLocatedBookId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -92,16 +117,17 @@ export default function LibraryApp() {
         headers: { "x-demo-user": demoIdentity },
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Library unavailable");
+      if (!response.ok) throw new Error(body.error ?? COPY[locale].libraryUnavailable);
       setSnapshot(body);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Library unavailable");
+      setError(cause instanceof Error ? cause.message : COPY[locale].libraryUnavailable);
     } finally {
       setLoading(false);
     }
-  }, [demoIdentity]);
+  }, [demoIdentity, locale]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { document.documentElement.lang = locale; }, [locale]);
 
   const act = useCallback(async (action: LibraryAction, success?: string) => {
     setBusy(true);
@@ -113,15 +139,15 @@ export default function LibraryApp() {
         body: JSON.stringify(action),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Update failed");
-      setNotice(success ?? "Saved successfully.");
+      if (!response.ok) throw new Error(body.error ?? COPY[locale].updateFailed);
+      setNotice(success ?? COPY[locale].savedSuccessfully);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Update failed");
+      setError(cause instanceof Error ? cause.message : COPY[locale].updateFailed);
     } finally {
       setBusy(false);
     }
-  }, [demoIdentity, load]);
+  }, [demoIdentity, load, locale]);
 
   useEffect(() => {
     if (!notice) return;
@@ -135,10 +161,11 @@ export default function LibraryApp() {
     return snapshot.state.books.filter((book) => {
       const shelfMatch = !selectedShelfId || book.shelfId === selectedShelfId;
       const classMatch = classFilter === null || book.classIndex === classFilter;
-      const textMatch = !needle || `${book.title} ${book.author} ${book.ddc} ${book.kdc}`.toLowerCase().includes(needle);
+      const display = getBookDisplay(book, locale);
+      const textMatch = !needle || `${book.title} ${book.author} ${display.title} ${display.author} ${book.ddc} ${book.kdc}`.toLowerCase().includes(needle);
       return shelfMatch && classMatch && textMatch;
     });
-  }, [classFilter, query, selectedShelfId, snapshot]);
+  }, [classFilter, locale, query, selectedShelfId, snapshot]);
 
   const pageSize = 12;
   const pageCount = Math.max(1, Math.ceil(filteredBooks.length / pageSize));
@@ -152,69 +179,70 @@ export default function LibraryApp() {
   const selectedShelf = snapshot?.state.shelves.find((shelf) => shelf.id === selectedShelfId);
 
   if (loading && !snapshot) {
-    return <main className="loading-screen"><Library size={42} /><h1>Opening Durume Library</h1><p>Loading your Excel-backed collection...</p><div className="loading-line" /></main>;
+    return <main className="loading-screen"><Library size={42} /><h1>{copy.openingLibrary}</h1><p>{copy.loadingCollection}</p><div className="loading-line" /></main>;
   }
 
   if (!snapshot) {
     return (
       <main className="loading-screen error-state">
         <AlertTriangle size={42} />
-        <h1>We could not open the library</h1>
+        <h1>{copy.openFailed}</h1>
         <p>{error}</p>
         <div className="drawer-actions">
-          <Link className="primary-button" href="/api/auth/signin">Sign in with Microsoft</Link>
-          <button className="secondary-button" onClick={load}>Try again</button>
+          <Link className="primary-button" href="/api/auth/signin">{copy.signIn}</Link>
+          <button className="secondary-button" onClick={load}>{copy.tryAgain}</button>
         </div>
       </main>
     );
   }
 
-  const modeLabel = snapshot.mode === "demo" ? "LOCAL DEMO DATA" : "ONEDRIVE EXCEL";
+  const modeLabel = snapshot.mode === "demo" ? copy.localDemo : copy.oneDriveExcel;
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button className="icon-button mobile-only" aria-label="Open menu" onClick={() => setNavOpen(true)}><Menu /></button>
+        <button className="icon-button mobile-only" aria-label={copy.openMenu} onClick={() => setNavOpen(true)}><Menu /></button>
         <div className="wordmark"><span className="logo-mark"><BookOpen /></span><div><strong>DURUME</strong><span>3D LIBRARY</span></div></div>
         <label className="global-search">
           <Search size={18} />
-          <input aria-label="Search books" placeholder="Search title, author, DDC or KDC..." value={query} onChange={(event) => { setQuery(event.target.value); setTab("explore"); }} />
+          <input aria-label={copy.searchBooks} placeholder={copy.searchPlaceholder} value={query} onChange={(event) => { setQuery(event.target.value); setTab("explore"); }} />
           <kbd>/</kbd>
         </label>
         <div className="top-actions">
+          <select className="language-select" aria-label={copy.language} value={locale} onChange={(event) => setLocale(event.target.value as Locale)}><option value="en">English</option><option value="ko">한국어</option></select>
           <span className={`mode-badge ${snapshot.mode}`}><span />{modeLabel}</span>
-          <button className="icon-button notification-button" aria-label="Notifications" onClick={() => setTab("my-library")}>
+          <button className="icon-button notification-button" aria-label={copy.notifications} onClick={() => setTab("my-library")}>
             <Bell /><b>{ownReservations.filter((item) => item.status === "ready").length + ownLoans.filter((item) => item.status === "requested" || isOverdue(item)).length}</b>
           </button>
           {snapshot.mode === "demo" ? (
-            <select className="identity-select" aria-label="Demo identity" value={demoIdentity} onChange={(event) => setDemoIdentity(event.target.value as "member" | "admin")}>
-              <option value="member">Member view</option>
-              <option value="admin">Admin view</option>
+            <select className="identity-select" aria-label={copy.demoIdentity} value={demoIdentity} onChange={(event) => setDemoIdentity(event.target.value as "member" | "admin")}>
+              <option value="member">{copy.memberView}</option>
+              <option value="admin">{copy.adminView}</option>
             </select>
           ) : (
-            <Link className="avatar" href="/api/auth/signout" title="Sign out">{initials(actorUser?.displayName ?? "U")}</Link>
+            <Link className="avatar" href="/api/auth/signout" title={copy.signOut}>{initials(actorUser?.displayName ?? "U")}</Link>
           )}
         </div>
       </header>
 
       <aside className={`sidebar ${navOpen ? "open" : ""}`}>
-        <div className="sidebar-mobile-head"><strong>Menu</strong><button className="icon-button" onClick={() => setNavOpen(false)}><X /></button></div>
+        <div className="sidebar-mobile-head"><strong>{copy.menu}</strong><button className="icon-button" aria-label={copy.closeMenu} onClick={() => setNavOpen(false)}><X /></button></div>
         <nav>
-          <p>LIBRARY</p>
-          <button className={tab === "explore" ? "active" : ""} onClick={() => { setTab("explore"); setNavOpen(false); }}><Library />Explore shelves</button>
-          <button className={tab === "my-library" ? "active" : ""} onClick={() => { setTab("my-library"); setNavOpen(false); }}><BookOpen />My library <small>{ownLoans.filter((loan) => loan.status !== "returned" && loan.status !== "rejected").length}</small></button>
-          <p>MANAGE</p>
-          <button className={tab === "admin" ? "active" : ""} disabled={snapshot.actor.role !== "admin"} onClick={() => { setTab("admin"); setNavOpen(false); }}><ShieldCheck />Admin desk</button>
-          <p>COLLECTION</p>
-          <button onClick={() => { setTab("explore"); setQuery(""); setSelectedShelfId(null); setClassFilter(null); setNavOpen(false); }}><Layers3 />All books <small>{snapshot.state.books.length}</small></button>
-          <button onClick={() => { setTab("explore"); setClassFilter(9); setNavOpen(false); }}><Clock3 />Recently added</button>
+          <p>{copy.library}</p>
+          <button className={tab === "explore" ? "active" : ""} onClick={() => { setTab("explore"); setNavOpen(false); }}><Library />{copy.exploreShelves}</button>
+          <button className={tab === "my-library" ? "active" : ""} onClick={() => { setTab("my-library"); setNavOpen(false); }}><BookOpen />{copy.myLibrary} <small>{ownLoans.filter((loan) => loan.status !== "returned" && loan.status !== "rejected").length}</small></button>
+          <p>{copy.manage}</p>
+          <button className={tab === "admin" ? "active" : ""} disabled={snapshot.actor.role !== "admin"} onClick={() => { setTab("admin"); setNavOpen(false); }}><ShieldCheck />{copy.adminDesk}</button>
+          <p>{copy.collection}</p>
+          <button onClick={() => { setTab("explore"); setQuery(""); setSelectedShelfId(null); setClassFilter(null); setNavOpen(false); }}><Layers3 />{copy.allBooks} <small>{snapshot.state.books.length}</small></button>
+          <button onClick={() => { setTab("explore"); setClassFilter(9); setNavOpen(false); }}><Clock3 />{copy.recentlyAdded}</button>
         </nav>
         <div className="sidebar-bottom">
-          <div className="profile-row"><span className="avatar">{initials(actorUser?.displayName ?? "Demo")}</span><div><strong>{actorUser?.displayName}</strong><span>{actorUser?.role === "admin" ? "Librarian" : "Member"} account</span></div></div>
-          <button><CircleHelp />Help & guides</button>
+          <div className="profile-row"><span className="avatar">{initials(actorUser?.displayName ?? "Demo")}</span><div><strong>{actorUser?.displayName}</strong><span>{actorUser?.role === "admin" ? copy.librarian : copy.member} {copy.account}</span></div></div>
+          <button><CircleHelp />{copy.helpGuides}</button>
         </div>
       </aside>
-      {navOpen && <button aria-label="Close menu" className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+      {navOpen && <button aria-label={copy.closeMenu} className="nav-backdrop" onClick={() => setNavOpen(false)} />}
 
       <main className="main-content">
         {error && <div className="alert error"><AlertTriangle /> <span>{error}</span><button onClick={() => setError(null)}><X /></button></div>}
@@ -223,70 +251,71 @@ export default function LibraryApp() {
         {tab === "explore" && (
           <>
             <div className="page-heading">
-              <div><span className="eyebrow">YOUR COLLECTION, IN SPACE</span><h1>Find your next great read.</h1><p>Explore every shelf, check availability, and send a request in seconds.</p></div>
-              <div className="heading-stats"><span><strong>{snapshot.state.books.length}</strong> BOOKS</span><i /><span><strong>{available}</strong> AVAILABLE</span><i /><span><strong>{snapshot.state.shelves.length}</strong> SHELVES</span></div>
+              <div><span className="eyebrow">{copy.collectionInSpace}</span><h1>{copy.nextRead}</h1><p>{copy.exploreDescription}</p></div>
+              <div className="heading-stats"><span><strong>{snapshot.state.books.length}</strong> {copy.books}</span><i /><span><strong>{available}</strong> {copy.available}</span><i /><span><strong>{snapshot.state.shelves.length}</strong> {copy.shelves}</span></div>
             </div>
 
             <section className="scene-card">
               <div className="scene-toolbar">
-                <div><span className="live-dot" /><strong>INTERACTIVE FLOOR PLAN</strong></div>
-                <div className="scene-location"><MapPin />{selectedShelf ? `${selectedShelf.name} · Floor ${selectedShelf.floor}` : "All locations"}<SlidersHorizontal /></div>
+                <div><span className="live-dot" /><strong>{copy.interactiveFloorPlan}</strong></div>
+                <div className="scene-location"><MapPin />{selectedShelf ? `${getShelfDisplay(selectedShelf, locale)} · ${floorLabel(selectedShelf.floor, locale)}` : copy.allLocations}<SlidersHorizontal /></div>
               </div>
               <div className="scene-wrap">
-                <ShelfScene shelves={snapshot.state.shelves} books={snapshot.state.books} selectedShelfId={selectedShelfId} onSelect={(id) => setSelectedShelfId(selectedShelfId === id ? null : id)} />
-                <div className="scene-hint"><span>↔</span> Drag to rotate <b>·</b> Scroll to zoom <b>·</b> Click a shelf</div>
+                <ShelfScene shelves={snapshot.state.shelves} books={snapshot.state.books} locale={locale} selectedShelfId={selectedShelfId} highlightedBookId={locatedBookId} onSelect={(id) => setSelectedShelfId(selectedShelfId === id ? null : id)} />
+                <div className="scene-hint"><span>↔</span> {copy.dragHint} <b>·</b> {copy.zoomHint} <b>·</b> {copy.clickShelf}</div>
               </div>
               <div className="scene-legend">
-                <span className="legend-title">LOCATIONS</span>
-                {snapshot.state.locations.map((location) => <button key={location.id} onClick={() => { setSelectedShelfId(snapshot.state.shelves.find((shelf) => shelf.locationId === location.id)?.id ?? null); }}><i style={{ background: ["#b95638", "#65827b", "#9c8055"][snapshot.state.locations.indexOf(location)] }} />{location.name}</button>)}
-                {selectedShelfId && <button className="clear-filter" onClick={() => setSelectedShelfId(null)}>Clear shelf filter</button>}
+                <span className="legend-title">{copy.locations}</span>
+                {snapshot.state.locations.map((location) => <button key={location.id} onClick={() => { setSelectedShelfId(snapshot.state.shelves.find((shelf) => shelf.locationId === location.id)?.id ?? null); }}><i style={{ background: ["#b95638", "#65827b", "#9c8055"][snapshot.state.locations.indexOf(location)] }} />{getLocationDisplay(location, locale)}</button>)}
+                {selectedShelfId && <button className="clear-filter" onClick={() => setSelectedShelfId(null)}>{copy.clearShelf}</button>}
               </div>
             </section>
 
-            <div className="content-heading"><div><span className="eyebrow">CATALOG</span><h2>{selectedShelf ? `${selectedShelf.name} collection` : "Browse the collection"}</h2></div><p>{filteredBooks.length} books found</p></div>
-            <div className="class-system-selector" role="group" aria-label="Classification system">
-              <span>Classification</span>
+            <div className="content-heading"><div><span className="eyebrow">{copy.catalog}</span><h2>{selectedShelf ? `${getShelfDisplay(selectedShelf, locale)} ${copy.collectionSuffix}` : copy.browseCollection}</h2></div><p>{filteredBooks.length} {copy.booksFound}</p></div>
+            <div className="class-system-selector" role="group" aria-label={copy.classificationSystem}>
+              <span>{copy.classification}</span>
               <button className={classSystem === "ddc" ? "active" : ""} onClick={() => setClassSystem("ddc")}>DDC</button>
               <button className={classSystem === "kdc" ? "active" : ""} onClick={() => setClassSystem("kdc")}>KDC</button>
             </div>
             <div className="class-filters">
-              <button className={classFilter === null ? "active" : ""} onClick={() => setClassFilter(null)}>All classes</button>
-              {CLASS_LABELS.map((label, index) => <button key={label} className={classFilter === index ? "active" : ""} onClick={() => setClassFilter(index)}>{index}00 <span>{label.split(" ")[0]}</span></button>)}
+              <button className={classFilter === null ? "active" : ""} onClick={() => setClassFilter(null)}>{copy.allClasses}</button>
+              {CLASS_LABELS.map((label, index) => <button key={label} className={classFilter === index ? "active" : ""} onClick={() => setClassFilter(index)}>{index}00 <span>{getClassLabel(index, locale) ?? label.split(" ")[0]}</span></button>)}
             </div>
 
             <div className="book-grid">
               {visibleBooks.map((book) => {
-                const status = statusFor(book, snapshot);
+                const status = statusFor(book, snapshot, copy);
                 const shelf = snapshot.state.shelves.find((item) => item.id === book.shelfId);
+                const display = getBookDisplay(book, locale);
                 return (
-                  <button className="book-card" key={book.id} onClick={() => setSelectedBookId(book.id)}>
+                  <button className="book-card" key={book.id} onClick={() => { setSelectedBookId(book.id); setLocatedBookId(null); }}>
                     <div className="book-cover" style={{ background: book.coverColor }}>
                       <span className="book-class">{classSystem === "ddc" ? book.ddc : book.kdc}</span>
                       <BookOpen size={28} />
-                      <strong>{book.title}</strong>
-                      <small>{book.author}</small>
+                      <strong>{display.title}</strong>
+                      <small>{display.author}</small>
                     </div>
                     <div className="book-meta">
                       <span className={`availability ${status.tone}`}><i />{status.label}</span>
-                      <h3>{book.title}</h3>
-                      <p>{book.author}</p>
-                      <span className="location-line"><MapPin />{shelf?.name} · {book.bin}</span>
+                      <h3>{display.title}</h3>
+                      <p>{display.author}</p>
+                      <span className="location-line"><MapPin />{shelf ? getShelfDisplay(shelf, locale) : ""} · {book.bin}</span>
                     </div>
                   </button>
                 );
               })}
             </div>
-            {visibleBooks.length === 0 && <div className="empty-state"><Search /><h3>No matching books</h3><p>Try another search, class, or shelf.</p></div>}
+            {visibleBooks.length === 0 && <div className="empty-state"><Search /><h3>{copy.noMatchingBooks}</h3><p>{copy.adjustSearch}</p></div>}
             <div className="pagination">
-              <button disabled={page === 0} onClick={() => setPage((value) => value - 1)}><ChevronLeft />Previous</button>
-              <span>Page <strong>{page + 1}</strong> of {pageCount}</span>
-              <button disabled={page + 1 >= pageCount} onClick={() => setPage((value) => value + 1)}>Next<ChevronRight /></button>
+              <button disabled={page === 0} onClick={() => setPage((value) => value - 1)}><ChevronLeft />{copy.previous}</button>
+              <span>{copy.page} <strong>{page + 1}</strong> {copy.of} {pageCount}</span>
+              <button disabled={page + 1 >= pageCount} onClick={() => setPage((value) => value + 1)}>{copy.next}<ChevronRight /></button>
             </div>
           </>
         )}
 
         {tab === "my-library" && (
-          <MemberDashboard snapshot={snapshot} ownLoans={ownLoans} ownReservations={ownReservations} busy={busy} act={act} />
+          <MemberDashboard snapshot={snapshot} ownLoans={ownLoans} ownReservations={ownReservations} busy={busy} act={act} locale={locale} copy={copy} />
         )}
 
         {tab === "admin" && snapshot.actor.role === "admin" && (
@@ -294,6 +323,8 @@ export default function LibraryApp() {
             snapshot={snapshot}
             busy={busy}
             act={act}
+            locale={locale}
+            copy={copy}
             onNewBook={() => { setEditingBook(null); setShowBookForm(true); }}
             onEditBook={(book) => { setEditingBook(book); setShowBookForm(true); }}
             onNewUser={() => setShowUserForm(true)}
@@ -301,89 +332,102 @@ export default function LibraryApp() {
         )}
       </main>
 
-      {selectedBook && (
-        <div className="drawer-backdrop" onClick={() => setSelectedBookId(null)}>
-          <aside className="book-drawer" onClick={(event) => event.stopPropagation()}>
-            <button className="drawer-close icon-button" aria-label="Close details" onClick={() => setSelectedBookId(null)}><X /></button>
-            <div className="drawer-cover" style={{ background: selectedBook.coverColor }}><BookOpen /><span>{selectedBook.ddc}</span><strong>{selectedBook.title}</strong></div>
-            <span className="eyebrow">{classSystem.toUpperCase()} · {CLASS_LABELS[selectedBook.classIndex]}</span>
-            <h2>{selectedBook.title}</h2>
-            <p className="drawer-author">{selectedBook.author} · {selectedBook.year}</p>
-            <div className="code-pills"><span>DDC {selectedBook.ddc}</span><span>KDC {selectedBook.kdc}</span></div>
-            <div className="detail-location"><MapPin /><div><strong>{snapshot.state.shelves.find((shelf) => shelf.id === selectedBook.shelfId)?.name}</strong><span>{snapshot.state.locations.find((location) => location.id === selectedBook.locationId)?.name} · Floor {snapshot.state.locations.find((location) => location.id === selectedBook.locationId)?.floor} · Bin {selectedBook.bin}</span></div></div>
-            <span className={`availability large ${statusFor(selectedBook, snapshot).tone}`}><i />{statusFor(selectedBook, snapshot).label}</span>
-            <p className="demo-note">{selectedBook.demo ? "Synthetic demo record — not real bibliographic metadata." : "Library catalog record."}</p>
-            <div className="drawer-actions">
-              {statusFor(selectedBook, snapshot).tone === "available" ? (
-                <button className="primary-button" disabled={busy} onClick={() => act({ type: "loan.request", bookId: selectedBook.id }, "Loan request sent to the librarian.")}>Request loan</button>
-              ) : (
-                <button className="primary-button" disabled={busy || ownReservations.some((item) => item.bookId === selectedBook.id && ["waiting", "ready"].includes(item.status))} onClick={() => act({ type: "reservation.request", bookId: selectedBook.id }, "Reservation added to the queue.")}>Reserve next</button>
-              )}
-              {snapshot.actor.role === "admin" && <button className="secondary-button" onClick={() => { setEditingBook(selectedBook); setShowBookForm(true); setSelectedBookId(null); }}><Settings />Edit</button>}
-            </div>
-          </aside>
-        </div>
-      )}
+      {selectedBook && (() => {
+        const display = getBookDisplay(selectedBook, locale);
+        const shelf = snapshot.state.shelves.find((item) => item.id === selectedBook.shelfId);
+        const location = snapshot.state.locations.find((item) => item.id === selectedBook.locationId);
+        const status = statusFor(selectedBook, snapshot, copy);
+        return (
+          <div className="drawer-backdrop" onClick={() => setSelectedBookId(null)}>
+            <aside className="book-drawer" onClick={(event) => event.stopPropagation()}>
+              <button className="drawer-close icon-button" aria-label={copy.closeDetails} onClick={() => setSelectedBookId(null)}><X /></button>
+              <div className="drawer-cover" style={{ background: selectedBook.coverColor }}><BookOpen /><span>{classSystem === "ddc" ? selectedBook.ddc : selectedBook.kdc}</span><strong>{display.title}</strong></div>
+              <span className="eyebrow">{classSystem.toUpperCase()} · {getClassLabel(selectedBook.classIndex, locale) ?? CLASS_LABELS[selectedBook.classIndex]}</span>
+              <h2>{display.title}</h2>
+              <p className="drawer-author">{display.author} · {selectedBook.year}</p>
+              <div className="code-pills"><span>DDC {selectedBook.ddc}</span><span>KDC {selectedBook.kdc}</span></div>
+              <button className="detail-location" aria-label={`${copy.viewBookLocation}: ${shelf ? getShelfDisplay(shelf, locale) : ""}`} onClick={() => { setSelectedShelfId(selectedBook.shelfId); setLocatedBookId(selectedBook.id); }}>
+                <MapPin /><div><strong>{shelf ? getShelfDisplay(shelf, locale) : ""}</strong><span>{location ? getLocationDisplay(location, locale) : ""} · {floorLabel(location?.floor, locale)} · {copy.bin} {selectedBook.bin}</span></div><span className="location-action">↗</span>
+              </button>
+              <span className={`availability large ${status.tone}`}><i />{status.label}</span>
+              <p className="demo-note">{selectedBook.demo ? copy.demoNote : copy.catalogNote}</p>
+              <div className="drawer-actions">
+                {status.tone === "available" ? (
+                  <button className="primary-button" disabled={busy} onClick={() => act({ type: "loan.request", bookId: selectedBook.id })}>{copy.requestLoan}</button>
+                ) : (
+                  <button className="primary-button" disabled={busy || ownReservations.some((item) => item.bookId === selectedBook.id && ["waiting", "ready"].includes(item.status))} onClick={() => act({ type: "reservation.request", bookId: selectedBook.id })}>{copy.reserveNext}</button>
+                )}
+                {snapshot.actor.role === "admin" && <button className="secondary-button" onClick={() => { setEditingBook(selectedBook); setShowBookForm(true); setSelectedBookId(null); }}><Settings />{copy.edit}</button>}
+              </div>
+            </aside>
+          </div>
+        );
+      })()}
 
       {showBookForm && snapshot.actor.role === "admin" && (
-        <BookForm book={editingBook} shelves={snapshot.state.shelves} onClose={() => setShowBookForm(false)} onSave={(book) => {
-          if (editingBook) void act({ type: "book.update", bookId: editingBook.id, version: editingBook.version, book }, "Book details and placement updated.");
-          else void act({ type: "book.create", book: book as Omit<Book, "id" | "version"> }, "New book added.");
+        <BookForm book={editingBook} shelves={snapshot.state.shelves} locale={locale} copy={copy} onClose={() => setShowBookForm(false)} onSave={(book) => {
+          if (editingBook) void act({ type: "book.update", bookId: editingBook.id, version: editingBook.version, book });
+          else void act({ type: "book.create", book: book as Omit<Book, "id" | "version"> });
           setShowBookForm(false);
         }} />
       )}
-      {showUserForm && <UserForm onClose={() => setShowUserForm(false)} onSave={(user) => { void act({ type: "user.create", user }, "User added."); setShowUserForm(false); }} />}
+      {showUserForm && <UserForm copy={copy} onClose={() => setShowUserForm(false)} onSave={(user) => { void act({ type: "user.create", user }); setShowUserForm(false); }} />}
     </div>
   );
 }
 
-function MemberDashboard({ snapshot, ownLoans, ownReservations, busy, act }: {
+function MemberDashboard({ snapshot, ownLoans, ownReservations, busy, act, locale, copy }: {
   snapshot: LoadedSnapshot;
   ownLoans: Loan[];
   ownReservations: Reservation[];
   busy: boolean;
   act: (action: LibraryAction, success?: string) => Promise<void>;
+  locale: Locale;
+  copy: Copy;
 }) {
   const active = ownLoans.filter((loan) => !["returned", "rejected"].includes(loan.status));
   const notices = [
-    ...ownLoans.filter(isOverdue).map((loan) => ({ key: loan.id, title: "A book is overdue", text: `${snapshot.state.books.find((book) => book.id === loan.bookId)?.title} must be returned.`, tone: "danger" })),
-    ...ownReservations.filter((reservation) => reservation.status === "ready").map((reservation) => ({ key: reservation.id, title: "Reservation ready", text: `${snapshot.state.books.find((book) => book.id === reservation.bookId)?.title} is ready for pickup.`, tone: "ready" })),
-    ...ownLoans.filter((loan) => loan.status === "approved").map((loan) => ({ key: loan.id, title: "Loan approved", text: `${snapshot.state.books.find((book) => book.id === loan.bookId)?.title} is now on loan.`, tone: "ready" })),
+    ...ownLoans.filter(isOverdue).map((loan) => { const book = snapshot.state.books.find((item) => item.id === loan.bookId); return { key: loan.id, title: copy.bookOverdue, text: `${book ? getBookDisplay(book, locale).title : loan.bookId} ${copy.mustReturn}`, tone: "danger" }; }),
+    ...ownReservations.filter((reservation) => reservation.status === "ready").map((reservation) => { const book = snapshot.state.books.find((item) => item.id === reservation.bookId); return { key: reservation.id, title: copy.reservationReady, text: `${book ? getBookDisplay(book, locale).title : reservation.bookId} ${copy.readyPickup}`, tone: "ready" }; }),
+    ...ownLoans.filter((loan) => loan.status === "approved").map((loan) => { const book = snapshot.state.books.find((item) => item.id === loan.bookId); return { key: loan.id, title: copy.loanApproved, text: `${book ? getBookDisplay(book, locale).title : loan.bookId} ${copy.nowOnLoan}`, tone: "ready" }; }),
   ];
   return (
     <>
-      <div className="page-heading"><div><span className="eyebrow">PERSONAL DESK</span><h1>My library</h1><p>Track loans, due dates, return requests, and reservations.</p></div></div>
+      <div className="page-heading"><div><span className="eyebrow">{copy.personalDesk}</span><h1>{copy.myLibrary}</h1><p>{copy.personalDescription}</p></div></div>
       <div className="member-stats">
-        <div><BookOpen /><span><strong>{active.length}</strong>Active loans</span></div>
-        <div><CalendarDays /><span><strong>{active.filter(isOverdue).length}</strong>Overdue</span></div>
-        <div><Clock3 /><span><strong>{ownReservations.filter((item) => ["waiting", "ready"].includes(item.status)).length}</strong>Reservations</span></div>
+        <div><BookOpen /><span><strong>{active.length}</strong>{copy.activeLoans}</span></div>
+        <div><CalendarDays /><span><strong>{active.filter(isOverdue).length}</strong>{copy.overdue}</span></div>
+        <div><Clock3 /><span><strong>{ownReservations.filter((item) => ["waiting", "ready"].includes(item.status)).length}</strong>{copy.reservations}</span></div>
       </div>
-      <section className="panel notice-panel"><div className="panel-heading"><h2><Bell />Notifications</h2><span>{notices.length} in app</span></div>
-        {notices.length ? notices.map((notice) => <div className={`notice-row ${notice.tone}`} key={notice.key}><span><Bell /></span><div><strong>{notice.title}</strong><p>{notice.text}</p></div></div>) : <div className="compact-empty"><Check />You are all caught up.</div>}
+      <section className="panel notice-panel"><div className="panel-heading"><h2><Bell />{copy.notifications}</h2><span>{notices.length} {copy.inApp}</span></div>
+        {notices.length ? notices.map((notice) => <div className={`notice-row ${notice.tone}`} key={notice.key}><span><Bell /></span><div><strong>{notice.title}</strong><p>{notice.text}</p></div></div>) : <div className="compact-empty"><Check />{copy.allCaughtUp}</div>}
       </section>
-      <section className="panel"><div className="panel-heading"><h2><BookOpen />My loans</h2><span>{active.length} active</span></div>
+      <section className="panel"><div className="panel-heading"><h2><BookOpen />{copy.myLoans}</h2><span>{active.length} {copy.active}</span></div>
         <div className="responsive-table">
-          <table><thead><tr><th>Book</th><th>Status</th><th>Due</th><th></th></tr></thead><tbody>
+          <table><thead><tr><th>{copy.book}</th><th>{copy.status}</th><th>{copy.due}</th><th></th></tr></thead><tbody>
             {ownLoans.map((loan) => {
               const book = snapshot.state.books.find((item) => item.id === loan.bookId);
-              return <tr key={loan.id}><td><strong>{book?.title ?? loan.bookId}</strong><small>{book?.author}</small></td><td><span className={`status-chip ${loan.status}`}>{loan.status.replace("_", " ")}</span></td><td>{dueLabel(loan)}</td><td>{["approved", "overdue"].includes(loan.status) ? <button className="small-button" disabled={busy} onClick={() => act({ type: "return.request", loanId: loan.id }, "Return request sent.")}>Request return</button> : <span>—</span>}</td></tr>;
+              const display = book ? getBookDisplay(book, locale) : { title: loan.bookId, author: "" };
+              return <tr key={loan.id}><td><strong>{display.title}</strong><small>{display.author}</small></td><td><span className={`status-chip ${loan.status}`}>{workflowStatus(loan.status, locale)}</span></td><td>{dueLabel(loan, locale, copy)}</td><td>{["approved", "overdue"].includes(loan.status) ? <button className="small-button" disabled={busy} onClick={() => act({ type: "return.request", loanId: loan.id })}>{copy.requestReturn}</button> : <span>—</span>}</td></tr>;
             })}
           </tbody></table>
         </div>
-        {!ownLoans.length && <div className="compact-empty">No loans yet. Explore a shelf to begin.</div>}
+        {!ownLoans.length && <div className="compact-empty">{copy.noLoans}</div>}
       </section>
-      <section className="panel"><div className="panel-heading"><h2><Clock3 />My reservations</h2><span>Queue order is preserved</span></div>
-        {ownReservations.map((reservation) => <div className="reservation-row" key={reservation.id}><div><strong>{snapshot.state.books.find((book) => book.id === reservation.bookId)?.title}</strong><span>{reservation.status} · {new Date(reservation.createdAt).toLocaleDateString()}</span></div>{["waiting", "ready"].includes(reservation.status) && <button className="text-button" disabled={busy} onClick={() => act({ type: "reservation.cancel", reservationId: reservation.id }, "Reservation cancelled.")}>Cancel</button>}</div>)}
-        {!ownReservations.length && <div className="compact-empty">No reservations.</div>}
+      <section className="panel"><div className="panel-heading"><h2><Clock3 />{copy.myReservations}</h2><span>{copy.queuePreserved}</span></div>
+        {ownReservations.map((reservation) => { const book = snapshot.state.books.find((item) => item.id === reservation.bookId); return <div className="reservation-row" key={reservation.id}><div><strong>{book ? getBookDisplay(book, locale).title : reservation.bookId}</strong><span>{workflowStatus(reservation.status, locale)} · {new Date(reservation.createdAt).toLocaleDateString(locale === "ko" ? "ko-KR" : "en")}</span></div>{["waiting", "ready"].includes(reservation.status) && <button className="text-button" disabled={busy} onClick={() => act({ type: "reservation.cancel", reservationId: reservation.id })}>{copy.cancel}</button>}</div>; })}
+        {!ownReservations.length && <div className="compact-empty">{copy.noReservations}</div>}
       </section>
     </>
   );
 }
 
-function AdminDashboard({ snapshot, busy, act, onNewBook, onEditBook, onNewUser }: {
+function AdminDashboard({ snapshot, busy, act, onNewBook, onEditBook, onNewUser, locale, copy }: {
   snapshot: LoadedSnapshot;
   busy: boolean;
   act: (action: LibraryAction, success?: string) => Promise<void>;
+  locale: Locale;
+  copy: Copy;
   onNewBook: () => void;
   onEditBook: (book: Book) => void;
   onNewUser: () => void;
@@ -395,41 +439,41 @@ function AdminDashboard({ snapshot, busy, act, onNewBook, onEditBook, onNewUser 
   const userFor = (id: string) => snapshot.state.users.find((user) => user.id === id);
   return (
     <>
-      <div className="page-heading"><div><span className="eyebrow">LIBRARIAN WORKSPACE</span><h1>Admin desk</h1><p>Approve circulation requests and keep the Excel-backed catalog organized.</p></div><button className="primary-button" onClick={onNewBook}><Plus />New book</button></div>
+      <div className="page-heading"><div><span className="eyebrow">{copy.librarianWorkspace}</span><h1>{copy.adminDesk}</h1><p>{copy.adminDescription}</p></div><button className="primary-button" onClick={onNewBook}><Plus />{copy.newBook}</button></div>
       <div className="member-stats">
-        <div><Clock3 /><span><strong>{queue.length}</strong>Needs action</span></div>
-        <div><AlertTriangle /><span><strong>{overdue.length}</strong>Overdue</span></div>
-        <div><CalendarDays /><span><strong>{activeReservations.length}</strong>Reservations</span></div>
+        <div><Clock3 /><span><strong>{queue.length}</strong>{copy.needsAction}</span></div>
+        <div><AlertTriangle /><span><strong>{overdue.length}</strong>{copy.overdue}</span></div>
+        <div><CalendarDays /><span><strong>{activeReservations.length}</strong>{copy.reservations}</span></div>
       </div>
-      <section className="panel"><div className="panel-heading"><h2><ShieldCheck />Circulation queue</h2><span>State-validated actions</span></div>
-        <div className="responsive-table"><table><thead><tr><th>Book / member</th><th>Request</th><th>Submitted</th><th>Action</th></tr></thead><tbody>
-          {queue.map((loan) => <tr key={loan.id}><td><strong>{bookFor(loan.bookId)?.title}</strong><small>{userFor(loan.userId)?.displayName}</small></td><td><span className={`status-chip ${loan.status}`}>{loan.status.replace("_", " ")}</span></td><td>{new Date(loan.requestedAt).toLocaleDateString()}</td><td className="table-actions">
-            {loan.status === "requested" ? <><button className="small-button approve" disabled={busy} onClick={() => act({ type: "loan.approve", loanId: loan.id, version: loan.version }, "Loan approved.")}><Check />Approve</button><button className="small-button" disabled={busy} onClick={() => act({ type: "loan.reject", loanId: loan.id, version: loan.version }, "Request rejected.")}>Reject</button></> : <button className="small-button approve" disabled={busy} onClick={() => act({ type: "return.process", loanId: loan.id, version: loan.version }, "Return processed.")}>Process return</button>}
-          </td></tr>)}
+      <section className="panel"><div className="panel-heading"><h2><ShieldCheck />{copy.circulationQueue}</h2><span>{copy.stateValidated}</span></div>
+        <div className="responsive-table"><table><thead><tr><th>{copy.bookMember}</th><th>{copy.request}</th><th>{copy.submitted}</th><th>{copy.action}</th></tr></thead><tbody>
+          {queue.map((loan) => { const book = bookFor(loan.bookId); return <tr key={loan.id}><td><strong>{book ? getBookDisplay(book, locale).title : loan.bookId}</strong><small>{userFor(loan.userId)?.displayName}</small></td><td><span className={`status-chip ${loan.status}`}>{workflowStatus(loan.status, locale)}</span></td><td>{new Date(loan.requestedAt).toLocaleDateString(locale === "ko" ? "ko-KR" : "en")}</td><td className="table-actions">
+            {loan.status === "requested" ? <><button className="small-button approve" disabled={busy} onClick={() => act({ type: "loan.approve", loanId: loan.id, version: loan.version })}><Check />{copy.approve}</button><button className="small-button" disabled={busy} onClick={() => act({ type: "loan.reject", loanId: loan.id, version: loan.version })}>{copy.reject}</button></> : <button className="small-button approve" disabled={busy} onClick={() => act({ type: "return.process", loanId: loan.id, version: loan.version })}>{copy.processReturn}</button>}
+          </td></tr>; })}
         </tbody></table></div>
-        {!queue.length && <div className="compact-empty"><Check />The circulation queue is clear.</div>}
+        {!queue.length && <div className="compact-empty"><Check />{copy.queueClear}</div>}
       </section>
       <div className="admin-columns">
-        <section className="panel"><div className="panel-heading"><h2><AlertTriangle />Overdue & reservations</h2><span>{overdue.length + activeReservations.length}</span></div>
-          {overdue.map((loan) => <div className="admin-list-row" key={loan.id}><span className="danger-dot" /><div><strong>{bookFor(loan.bookId)?.title}</strong><small>{userFor(loan.userId)?.displayName} · {dueLabel(loan)}</small></div></div>)}
-          {activeReservations.map((reservation) => <div className="admin-list-row" key={reservation.id}><span className={`ready-dot ${reservation.status}`} /><div><strong>{bookFor(reservation.bookId)?.title}</strong><small>{userFor(reservation.userId)?.displayName} · reservation {reservation.status}</small></div></div>)}
+        <section className="panel"><div className="panel-heading"><h2><AlertTriangle />{copy.overdueReservations}</h2><span>{overdue.length + activeReservations.length}</span></div>
+          {overdue.map((loan) => { const book = bookFor(loan.bookId); return <div className="admin-list-row" key={loan.id}><span className="danger-dot" /><div><strong>{book ? getBookDisplay(book, locale).title : loan.bookId}</strong><small>{userFor(loan.userId)?.displayName} · {dueLabel(loan, locale, copy)}</small></div></div>; })}
+          {activeReservations.map((reservation) => { const book = bookFor(reservation.bookId); return <div className="admin-list-row" key={reservation.id}><span className={`ready-dot ${reservation.status}`} /><div><strong>{book ? getBookDisplay(book, locale).title : reservation.bookId}</strong><small>{userFor(reservation.userId)?.displayName} · {copy.reservation} {workflowStatus(reservation.status, locale)}</small></div></div>; })}
         </section>
-        <section className="panel"><div className="panel-heading"><h2><UserRound />Users & roles</h2><button className="small-button" onClick={onNewUser}><Plus />Add user</button></div>
-          {snapshot.state.users.map((user) => <div className="admin-list-row" key={user.id}><span className="avatar small">{initials(user.displayName)}</span><div><strong>{user.displayName}</strong><small>{user.email}</small></div><select disabled={busy || user.id === snapshot.actor.id} value={user.role} onChange={(event) => act({ type: "user.role", userId: user.id, role: event.target.value as User["role"], version: user.version }, "Role updated.")}><option value="member">Member</option><option value="admin">Admin</option></select></div>)}
+        <section className="panel"><div className="panel-heading"><h2><UserRound />{copy.usersRoles}</h2><button className="small-button" onClick={onNewUser}><Plus />{copy.addUser}</button></div>
+          {snapshot.state.users.map((user) => <div className="admin-list-row" key={user.id}><span className="avatar small">{initials(user.displayName)}</span><div><strong>{user.displayName}</strong><small>{user.email}</small></div><select disabled={busy || user.id === snapshot.actor.id} value={user.role} onChange={(event) => act({ type: "user.role", userId: user.id, role: event.target.value as User["role"], version: user.version })}><option value="member">{copy.member}</option><option value="admin">{copy.librarian}</option></select></div>)}
         </section>
       </div>
-      <section className="panel"><div className="panel-heading"><h2><BookOpen />Catalog & shelf placement</h2><span>{snapshot.state.books.length} records</span></div>
+      <section className="panel"><div className="panel-heading"><h2><BookOpen />{copy.catalogPlacement}</h2><span>{snapshot.state.books.length} {copy.records}</span></div>
         <div className="catalog-admin-list">
-          {snapshot.state.books.slice(0, 12).map((book) => <div className="catalog-admin-row" key={book.id}><span className="mini-cover" style={{ background: book.coverColor }} /><div><strong>{book.title}</strong><small>{book.author} · {book.ddc}</small></div><select aria-label={`Shelf for ${book.title}`} value={book.shelfId} disabled={busy} onChange={(event) => act({ type: "book.place", bookId: book.id, shelfId: event.target.value, bin: book.bin, version: book.version }, "Shelf placement updated.")}>{snapshot.state.shelves.map((shelf) => <option key={shelf.id} value={shelf.id}>{shelf.name}</option>)}</select><button className="small-button" onClick={() => onEditBook(book)}>Edit</button><button aria-label={`Delete ${book.title}`} className="icon-button danger" disabled={busy} onClick={() => { if (window.confirm(`Delete ${book.title}? Active loans block deletion.`)) act({ type: "book.delete", bookId: book.id, version: book.version }, "Book deleted."); }}><Trash2 /></button></div>)}
+          {snapshot.state.books.slice(0, 12).map((book) => { const display = getBookDisplay(book, locale); return <div className="catalog-admin-row" key={book.id}><span className="mini-cover" style={{ background: book.coverColor }} /><div><strong>{display.title}</strong><small>{display.author} · {book.ddc}</small></div><select aria-label={`${copy.shelfFor} ${display.title}`} value={book.shelfId} disabled={busy} onChange={(event) => act({ type: "book.place", bookId: book.id, shelfId: event.target.value, bin: book.bin, version: book.version })}>{snapshot.state.shelves.map((shelf) => <option key={shelf.id} value={shelf.id}>{getShelfDisplay(shelf, locale)}</option>)}</select><button className="small-button" onClick={() => onEditBook(book)}>{copy.edit}</button><button aria-label={`${copy.delete} ${display.title}`} className="icon-button danger" disabled={busy} onClick={() => { if (window.confirm(`${copy.deleteBook}\n${display.title}`)) act({ type: "book.delete", bookId: book.id, version: book.version }); }}><Trash2 /></button></div>; })}
         </div>
       </section>
     </>
   );
 }
 
-function BookForm({ book, shelves, onClose, onSave }: { book: Book | null; shelves: Shelf[]; onClose: () => void; onSave: (book: Omit<Book, "id" | "version">) => void }) {
+function BookForm({ book, shelves, locale, copy, onClose, onSave }: { book: Book | null; shelves: Shelf[]; locale: Locale; copy: Copy; onClose: () => void; onSave: (book: Omit<Book, "id" | "version">) => void }) {
   const shelf = shelves.find((item) => item.id === book?.shelfId) ?? shelves[0];
-  return <Modal title={book ? "Edit catalog book" : "Add catalog book"} onClose={onClose}>
+  return <Modal title={book ? copy.editCatalogBook : copy.addCatalogBook} onClose={onClose}>
     <form className="editor-form" onSubmit={(event) => {
       event.preventDefault();
       const data = new FormData(event.currentTarget);
@@ -437,6 +481,8 @@ function BookForm({ book, shelves, onClose, onSave }: { book: Book | null; shelv
       onSave({
         title: String(data.get("title")),
         author: String(data.get("author")),
+        titleKo: String(data.get("titleKo") ?? "").trim() || null,
+        authorKo: String(data.get("authorKo") ?? "").trim() || null,
         year: Number(data.get("year")),
         ddc: String(data.get("ddc")),
         kdc: String(data.get("kdc")),
@@ -448,23 +494,24 @@ function BookForm({ book, shelves, onClose, onSave }: { book: Book | null; shelv
         demo: book?.demo ?? false,
       });
     }}>
-      <label>Title<input name="title" required defaultValue={book?.title} /></label>
-      <label>Author<input name="author" required defaultValue={book?.author} /></label>
-      <div className="form-grid"><label>Year<input name="year" type="number" required min="1900" max="2100" defaultValue={book?.year ?? 2026} /></label><label>Broad class<select name="classIndex" defaultValue={book?.classIndex ?? 0}>{CLASS_LABELS.map((label, index) => <option key={label} value={index}>{index}00 {label}</option>)}</select></label></div>
+      <label>{copy.title} (English)<input name="title" required defaultValue={book?.title} /></label>
+      <label>{copy.author} (English)<input name="author" required defaultValue={book?.author} /></label>
+      <div className="form-grid"><label>한국어 제목<input name="titleKo" defaultValue={book?.titleKo ?? ""} /></label><label>한국어 저자<input name="authorKo" defaultValue={book?.authorKo ?? ""} /></label></div>
+      <div className="form-grid"><label>{copy.year}<input name="year" type="number" required min="1900" max="2100" defaultValue={book?.year ?? 2026} /></label><label>{copy.broadClass}<select name="classIndex" defaultValue={book?.classIndex ?? 0}>{CLASS_LABELS.map((label, index) => <option key={label} value={index}>{index}00 {getClassLabel(index, locale) ?? label}</option>)}</select></label></div>
       <div className="form-grid"><label>DDC<input name="ddc" required pattern="\\d{3}(\\.\\d+)?" defaultValue={book?.ddc ?? "000"} /></label><label>KDC<input name="kdc" required pattern="\\d{3}(\\.\\d+)?" defaultValue={book?.kdc ?? "000"} /></label></div>
-      <div className="form-grid"><label>Shelf<select name="shelfId" defaultValue={shelf.id}>{shelves.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label>Bin<input name="bin" required defaultValue={book?.bin ?? "A-1"} /></label></div>
-      <label>Cover color<input name="coverColor" type="color" defaultValue={book?.coverColor ?? "#d97757"} /></label>
-      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit"><Check />Save book</button></div>
+      <div className="form-grid"><label>{copy.shelf}<select name="shelfId" defaultValue={shelf.id}>{shelves.map((item) => <option key={item.id} value={item.id}>{getShelfDisplay(item, locale)}</option>)}</select></label><label>{copy.bin}<input name="bin" required defaultValue={book?.bin ?? "A-1"} /></label></div>
+      <label>{copy.coverColor}<input name="coverColor" type="color" defaultValue={book?.coverColor ?? "#d97757"} /></label>
+      <div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>{copy.cancel}</button><button className="primary-button" type="submit"><Check />{copy.saveBook}</button></div>
     </form>
   </Modal>;
 }
 
-function UserForm({ onClose, onSave }: { onClose: () => void; onSave: (user: Omit<User, "id" | "version">) => void }) {
-  return <Modal title="Register user" onClose={onClose}><form className="editor-form" onSubmit={(event) => {
+function UserForm({ copy, onClose, onSave }: { copy: Copy; onClose: () => void; onSave: (user: Omit<User, "id" | "version">) => void }) {
+  return <Modal title={copy.registerUser} onClose={onClose}><form className="editor-form" onSubmit={(event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     onSave({ displayName: String(data.get("displayName")), email: String(data.get("email")), authId: String(data.get("authId")), role: data.get("role") as User["role"] });
-  }}><label>Display name<input name="displayName" required /></label><label>Email<input name="email" type="email" required /></label><label>Entra object ID<input name="authId" required /></label><label>Role<select name="role"><option value="member">Member</option><option value="admin">Admin</option></select></label><div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">Add user</button></div></form></Modal>;
+  }}><label>{copy.displayName}<input name="displayName" required /></label><label>{copy.email}<input name="email" type="email" required /></label><label>{copy.entraId}<input name="authId" required /></label><label>{copy.role}<select name="role"><option value="member">{copy.member}</option><option value="admin">{copy.librarian}</option></select></label><div className="modal-actions"><button type="button" className="secondary-button" onClick={onClose}>{copy.cancel}</button><button className="primary-button" type="submit">{copy.addUser}</button></div></form></Modal>;
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {

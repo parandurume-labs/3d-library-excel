@@ -4,21 +4,30 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Text } from "@react-three/drei";
 import { useMemo } from "react";
 import type { Book, Shelf } from "@/lib/domain";
+import { getShelfDisplay, type Locale } from "@/lib/i18n";
 
 type Props = {
   shelves: Shelf[];
   books: Book[];
+  locale: Locale;
   selectedShelfId: string | null;
+  highlightedBookId: string | null;
   onSelect: (shelfId: string) => void;
 };
 
-function Shelves({ shelves, books, selectedShelfId, onSelect }: Props) {
+function Shelves({ shelves, books, locale, selectedShelfId, highlightedBookId, onSelect }: Props) {
   const visible = shelves;
   const grouped = useMemo(() => {
     const map = new Map<string, Book[]>();
-    for (const shelf of visible) map.set(shelf.id, books.filter((book) => book.shelfId === shelf.id).slice(0, 18));
+    for (const shelf of visible) {
+      const shelfBooks = books.filter((book) => book.shelfId === shelf.id);
+      const shown = shelfBooks.slice(0, 18);
+      const highlightedIndex = shelfBooks.findIndex((book) => book.id === highlightedBookId);
+      if (highlightedIndex >= 18) shown[shown.length - 1] = shelfBooks[highlightedIndex];
+      map.set(shelf.id, shown);
+    }
     return map;
-  }, [books, visible]);
+  }, [books, highlightedBookId, visible]);
 
   return (
     <>
@@ -57,15 +66,16 @@ function Shelves({ shelves, books, selectedShelfId, onSelect }: Props) {
             {(grouped.get(shelf.id) ?? []).map((book, bookIndex) => {
               const level = Math.floor(bookIndex / 6);
               const spot = bookIndex % 6;
+              const highlighted = book.id === highlightedBookId;
               return (
-                <mesh key={book.id} position={[-0.95 + spot * 0.37, -0.43 + level * 0.86, 0.58]} castShadow>
+                <mesh key={book.id} position={[-0.95 + spot * 0.37, -0.43 + level * 0.86, highlighted ? 0.7 : 0.58]} scale={highlighted ? 1.16 : 1} castShadow>
                   <boxGeometry args={[0.25, 0.62 + (bookIndex % 3) * 0.05, 0.25]} />
-                  <meshStandardMaterial color={book.coverColor} roughness={0.5} />
+                  <meshStandardMaterial color={highlighted ? "#ffd166" : book.coverColor} emissive={highlighted ? "#9c5f00" : "#000000"} emissiveIntensity={highlighted ? 0.7 : 0} roughness={0.45} />
                 </mesh>
               );
             })}
             <Text position={[0, 1.82, 0]} fontSize={0.18} color="#3f2d25" anchorX="center">
-              {shelf.name}
+              {getShelfDisplay(shelf, locale)}
             </Text>
           </group>
         );

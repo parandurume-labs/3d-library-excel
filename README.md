@@ -8,7 +8,8 @@ Next.js + Three.js 기반의 경량 3D 도서관 MVP입니다. Graph/Excel 모�
 ## 제공 기능
 
 - 3D 서가 회전·확대, 서가 선택과 검색/분류 필터
-- DDC/KDC 표시 전환, 도서 상세 정보와 서가 위치 확인
+- 한국어/영어 화면 전환, 자연스러운 한국어 데모 도서 제목·저자 표시
+- DDC/KDC 표시 전환, 도서 상세 정보에서 상세 패널을 유지한 채 3D 서가 위치 강조
 - 대출 신청, 예약, 반납 신청, 반납 예정일/연체 표시, 앱 내부 알림
 - 관리자 도서 등록·수정·삭제·서가 배치, 회원/역할 관리, 대출 승인, 반납 처리
 - Microsoft Entra delegated OAuth와 Microsoft Graph Excel 테이블 읽기/쓰기
@@ -63,7 +64,13 @@ npm run generate:workbook
 
 기본 산출물은
 [`artifacts/3d-library-demo.xlsx`](artifacts/3d-library-demo.xlsx)이며 520권의 합성 도서를
-포함합니다. 이 파일을 로그인하려는 사용자의 OneDrive에 업로드합니다.
+포함합니다. `Books` 표의 선택적 `titleKo`/`authorKo` 열은 한국어 화면에 표시할 제목과 저자
+번역이며, 원본 `title`/`author`와 함께 workbook에 저장됩니다. 이 파일을 로그인하려는 사용자의
+OneDrive에 업로드합니다.
+
+이 선택 열은 기존 workbook과의 호환성을 위해 필수 열이 아닙니다. 열이 없으면 해당 도서의
+영문 metadata가 한국어 화면에서도 그대로 표시되고, 열이 있는 workbook에서는 읽기·쓰기 시
+실제 표의 열 순서를 따라 번역 값도 보존됩니다.
 
 권장 예시:
 

@@ -20,6 +20,8 @@ export const bookSchema = z.object({
   ...base,
   title: z.string().min(1),
   author: z.string().min(1),
+  titleKo: z.string().min(1).nullable().optional(),
+  authorKo: z.string().min(1).nullable().optional(),
   year: z.number().int().min(1900).max(2100),
   ddc: z.string().regex(/^\d{3}(?:\.\d+)?$/),
   kdc: z.string().regex(/^\d{3}(?:\.\d+)?$/),

@@ -3,7 +3,7 @@ import { createDemoState } from "./demo-data";
 import type { EntityName, LibraryState } from "./domain";
 
 export const workbookTables: { name: EntityName; tableName: string; columns: string[] }[] = [
-  { name: "books", tableName: "Books", columns: ["id", "version", "title", "author", "year", "ddc", "kdc", "classIndex", "locationId", "shelfId", "bin", "coverColor", "demo"] },
+  { name: "books", tableName: "Books", columns: ["id", "version", "title", "author", "titleKo", "authorKo", "year", "ddc", "kdc", "classIndex", "locationId", "shelfId", "bin", "coverColor", "demo"] },
   { name: "shelves", tableName: "Shelves", columns: ["id", "version", "name", "locationId", "zone", "floor", "capacity"] },
   { name: "locations", tableName: "Locations", columns: ["id", "version", "name", "floor", "zone"] },
   { name: "users", tableName: "Users", columns: ["id", "version", "authId", "displayName", "email", "role"] },
