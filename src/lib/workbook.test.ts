@@ -11,9 +11,11 @@ describe("synthetic workbook generator", () => {
     expect(new Set(state.books.map((book) => book.id)).size).toBe(520);
     expect(new Set(state.books.map((book) => book.title)).size).toBeGreaterThan(100);
     expect(new Set(state.books.map((book) => book.classIndex))).toEqual(new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]));
-    expect(state.books.every((book) => book.demo && book.ddc && book.kdc)).toBe(true);
+    expect(state.books.every((book) => book.demo && book.ddc && book.kdc && book.titleKo && book.authorKo)).toBe(true);
+    expect(state.books[0].titleKo).toBe("사라진 지도의 기록");
 
     const workbook = createWorkbook(state);
+    expect(workbookTables.find((table) => table.name === "books")?.columns).toEqual(expect.arrayContaining(["titleKo", "authorKo"]));
     expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual([
       "Books", "Shelves", "Locations", "Users", "Loans", "Reservations", "Settings", "START_HERE",
     ]);

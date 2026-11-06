@@ -42,7 +42,7 @@ describe("ShelfScene", () => {
     const { container } = render(
       // next/dynamic puts a boundary like this one around the scene in library-app.tsx.
       <Suspense fallback={<div data-testid="outside-fallback" />}>
-        <ShelfScene shelves={shelves} books={books} selectedShelfId={null} onSelect={() => {}} />
+        <ShelfScene shelves={shelves} books={books} locale="ko" selectedShelfId={null} highlightedBookId={null} onSelect={() => {}} />
       </Suspense>,
     );
 

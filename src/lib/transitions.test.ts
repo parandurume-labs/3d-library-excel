@@ -54,6 +54,22 @@ describe("library state transitions", () => {
     expect(() => transition(result.state, member, { type: "reservation.request", bookId: busyBook.bookId })).toThrowError(/already/);
   });
 
+  it("supports explicitly clearing Korean book metadata", () => {
+    const state = createDemoState();
+    const book = state.books[0];
+    const action = {
+      type: "book.update" as const,
+      bookId: book.id,
+      version: book.version,
+      book: { titleKo: null, authorKo: null },
+    };
+
+    expect(JSON.stringify(action.book)).toContain('"titleKo":null');
+    const updated = transition(state, admin, action).state.books.find((item) => item.id === book.id)!;
+    expect(updated.titleKo).toBeNull();
+    expect(updated.authorKo).toBeNull();
+  });
+
   it("protects book delete and detects optimistic conflicts", () => {
     const state = createDemoState();
     const active = state.loans.find((loan) => loan.status === "approved")!;

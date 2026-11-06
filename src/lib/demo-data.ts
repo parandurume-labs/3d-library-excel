@@ -6,6 +6,17 @@ export const DEMO_ADMIN_ID = "user-demo-admin";
 const adjectives = ["Hidden", "Curious", "Quiet", "Bright", "Digital", "Practical", "Gentle", "Modern", "Ancient", "Open"];
 const subjects = ["Atlas", "Patterns", "Cities", "Machines", "Stories", "Signals", "Gardens", "Numbers", "Horizons", "Questions"];
 const surnames = ["Rivera", "Kim", "Nolan", "Patel", "Chen", "Okafor", "Meyer", "Sato", "Costa", "Park"];
+const koreanTitles = [
+  "사라진 지도의 기록", "호기심은 길을 만든다", "고요한 도시의 오후", "빛나는 생각의 집", "디지털 시대의 서랍",
+  "생활을 바꾸는 작은 기술", "다정한 기계와의 대화", "오늘의 풍경을 읽다", "고전에게 길을 묻다", "열린 질문의 힘",
+  "도서관에서 만난 내일", "숲의 신호를 듣는 법", "별빛 아래 오래된 정원", "마주한 도시의 골목", "숫자로 보는 일상",
+  "기억하는 기계", "이야기 속의 집", "천천히 자라는 지식", "낯선 길의 안내서", "마음의 지평선", "새벽을 잇는 다리",
+  "작은 발명이 만든 변화", "언어의 숨은 지도", "우연히 찾은 과학", "그림자로 그린 역사", "바람이 머문 도서관",
+  "한 권의 책, 하나의 여정", "정원사의 질문", "미래를 기록하는 방법", "오래된 도시의 목소리", "문장 사이의 쉼표",
+  "시간을 건너는 표지", "생활 속 수학 산책", "고요한 혁신", "세계사를 여는 열쇠", "책장을 넘어선 이야기",
+  "새로운 예술의 문법", "함께 만드는 내일", "지식의 오래된 우물", "작은 발견들의 연대기",
+];
+const koreanAuthors = ["김하늘", "이서준", "박지안", "최유진", "정민서", "한도윤", "오은별", "윤지호", "장서연", "신우진"];
 const colors = ["#d97757", "#5d8a86", "#b47b54", "#6b7280", "#7d6fa6", "#b45f6d"];
 
 export function createDemoState(count = 520, now = new Date()): LibraryState {
@@ -33,6 +44,8 @@ export function createDemoState(count = 520, now = new Date()): LibraryState {
       version: 1,
       title: `${adjectives[i % adjectives.length]} ${subjects[Math.floor(i / 10) % subjects.length]} ${Math.floor(i / 100) + 1}`,
       author: `${surnames[(i * 7) % surnames.length]}, ${String.fromCharCode(65 + i % 26)}.`,
+      titleKo: `${koreanTitles[i % koreanTitles.length]}${i >= koreanTitles.length ? ` ${Math.floor(i / koreanTitles.length) + 1}` : ""}`,
+      authorKo: koreanAuthors[i % koreanAuthors.length],
       year: 2000 + (i % 26),
       ddc: `${classIndex === 0 ? "000" : `${classIndex}00`}.${String(i % 100).padStart(2, "0")}`,
       kdc: `${classIndex}10.${String((i * 3) % 100).padStart(2, "0")}`,
