@@ -1,123 +1,139 @@
-# AI와 함께 이 프로젝트를 변형하는 가이드
+# Guide to adapting this project with AI
 
-이 프로젝트는 도서관 예제로 **다국어, 3D 시각화, 물류·재고 흐름, 회원·권한 관리**를 보여 주는
-재사용 가능한 출발점입니다. 목표는 많은 사용자가 자신의 소규모·중간 규모 업무 데이터를 위해
-복잡한 인프라보다 먼저 웹 앱, Excel, Microsoft Graph를 조합해 실용적인 결과를 만드는 것입니다.
+**English** | [한국어](ai-adaptation-guide.ko.md)
 
-## 먼저 무엇을 바꿀지 정하기
+> This document is written **for people and AI to read together**. When you ask an AI to change
+> this repository, hand it this document as well. The AI reads the order of changes and the rules
+> to keep; the person learns how to check what the AI did.
 
-도서관 용어만 바꾸지 말고 다음 항목을 한 문장씩 정의합니다.
+It used to be that if you needed a business tool, you had to build it from scratch. Today you can
+adapt an existing example to your own work together with AI. Using a library as its example, this
+project is a starting point that covers **multilingual UI, 3D visualization, logistics and
+inventory flow, and members and roles**. The goal is to help the many people who manage small or
+medium-sized business data get useful results by combining a web app, Excel and Microsoft Graph,
+before they take on complex infrastructure.
 
-1. 관리 대상: 도서, 장비, 소모품, 공간, 차량, 문서 중 무엇인가?
-2. 핵심 상태: 예) `received`, `ready`, `checked_out`, `due`, `returned`, `outbound`
-3. 역할: 조회자, 회원/신청자, 관리자/승인자
-4. 데이터 규모와 동시 사용자 수
-5. 보존해야 하는 이력과 비즈니스 규칙
-6. Excel을 원본으로 유지할지, 규모가 커질 때 다른 저장소로 바꿀지
+## First decide what to change
 
-도메인이 작고 협업자가 Excel 확인을 필요로 한다면 이 프로젝트의 단일 workbook 구조가 적합합니다.
-대량 동시 쓰기나 강한 트랜잭션이 필요하면 `LibraryRepository` 경계를 유지하고 adapter를 데이터베이스로
-교체하는 방안을 AI에게 요청하십시오.
+Do not just swap the library vocabulary. Define each of these in one sentence:
 
-## 추천 파일별 변경 순서
+1. What you manage: books, equipment, supplies, spaces, vehicles or documents?
+2. Core states: e.g. `received`, `ready`, `checked_out`, `due`, `returned`, `outbound`
+3. Roles: viewer, member/requester, administrator/approver
+4. Data volume and number of concurrent users
+5. History you must keep, and business rules
+6. Whether Excel stays the source of truth, or moves to another store as you grow
 
-| 단계 | 파일/영역 | AI에게 맡길 작업 |
+If the domain is small and your collaborators need to check the data in Excel, this project's
+single-workbook structure fits well. If many users write at the same time or you need strict
+transactions, keep the `LibraryRepository` boundary and ask the AI to swap the adapter for a
+database.
+
+## Order of changes by file
+
+| Step | File / area | Work to give the AI |
 | --- | --- | --- |
-| 1 | `src/lib/domain.ts` | 엔티티, 역할, 상태 전이, Zod 스키마 변경 |
-| 2 | `src/lib/transitions.ts` | 업무 규칙, 승인·반납·출고 전이와 권한 검사 |
-| 3 | `src/lib/demo-data.ts`, `scripts/generate-workbook.ts` | 새 샘플 데이터와 Excel 표 생성 |
-| 4 | `src/lib/repositories/` | 기존 계약에 맞춘 local/Excel adapter 유지 또는 확장 |
-| 5 | `src/app/api/` | 새 action의 검증과 서버 측 RBAC 연결 |
-| 6 | `src/components/`, `src/lib/i18n.ts` | 목록·상세·대시보드 UI와 다국어 문자열 변경 |
-| 7 | `*.test.ts`, `*.test.tsx` | 상태 전이, 권한, 메뉴 노출, UI 회귀 검증 |
+| 1 | `src/lib/domain.ts` | Entities, roles, state transitions, Zod schema changes |
+| 2 | `src/lib/transitions.ts` | Business rules, approval/return/outbound transitions and permission checks |
+| 3 | `src/lib/demo-data.ts`, `scripts/generate-workbook.ts` | New sample data and Excel table generation |
+| 4 | `src/lib/repositories/` | Keep or extend the local/Excel adapters against the existing contract |
+| 5 | `src/app/api/` | Validation of new actions and server-side RBAC |
+| 6 | `src/components/`, `src/lib/i18n.ts` | List, detail and dashboard UI, and multilingual strings |
+| 7 | `*.test.ts`, `*.test.tsx` | State transitions, permissions, menu visibility, UI regression tests |
 
-처음에는 `domain.ts`와 workbook 생성기를 함께 변경한 뒤 테스트로 계약을 고정하고, 화면은 그 다음
-바꾸는 편이 안전합니다. 한 번에 여러 계층을 동시에 생성하도록 요청하면 오류 원인을 찾기 어렵습니다.
+It is safest to change `domain.ts` and the workbook generator together first, pin the contract with
+tests, and only then change the UI. If you ask for several layers at once, it becomes hard to find
+the cause when something breaks.
 
-## Excel과 Microsoft Graph를 데이터 원본으로 쓰는 원칙
+## Rules for using Excel and Microsoft Graph as the data source
 
-- 표 이름과 열 이름은 계약으로 취급하고, 의미 있는 변경마다 `schemaVersion`도 검토합니다.
-- 각 행에는 불변·고유 `id`와 낙관적 동시성을 위한 `version`을 유지합니다.
-- UI나 AI가 생성한 값만 Graph로 보내지 말고, 서버에서 Zod로 다시 검증합니다.
-- role은 브라우저의 메뉴 숨김으로 보호하지 않습니다. API가 매 action의 권한을 다시 검사합니다.
-- 기존 workbook의 사용자 정의 열은 읽기/쓰기 중 보존되어야 합니다.
-- secret, access token, Graph ID, 실제 회원 정보를 프롬프트나 소스에 넣지 않습니다.
-- Excel은 협업과 소규모·중간 규모에 유리하지만 데이터베이스 수준의 트랜잭션은 제공하지 않습니다.
+- Table and column names are a contract. Review `schemaVersion` with every meaningful change.
+- Every row has an `id` that never changes or repeats, and a `version` for optimistic concurrency.
+- Never send values produced by the UI or by AI straight to Graph; validate them again with Zod on
+  the server.
+- Hiding menus in the browser is not enough to enforce role-based permissions. The API checks
+  permissions again for every action.
+- Columns that users added to an existing workbook must survive reads and writes.
+- Never put secrets, access tokens, Graph IDs or real member data into prompts or source code.
+- Excel is good for viewing and editing together and suits small to medium scale, but it does not
+  provide database-level transactions.
 
-Graph 모드 설정과 workbook 표 계약은 [README](../README.md)의 실행 절차를 기준으로 합니다.
+For Graph mode setup and the workbook table contract, follow the steps in the [README](../README.md).
 
-## AI에 전달할 수 있는 구체적인 프롬프트
+## Prompts you can hand to an AI
 
-### 1. 도메인 변형
-
-```text
-이 저장소를 도서관에서 사내 장비 대여 앱으로 변형한다.
-먼저 src/lib/domain.ts와 Workbook table 계약만 검토해 변경 계획을 제시하라.
-기존 엔티티는 Books→Assets, Loans→Checkouts처럼 대응하고,
-received, ready, checked_out, due, returned, outbound 상태를 제안하라.
-실제 파일 수정 전에 id/version, 관계, 서버 RBAC, Excel 호환성을 설명하라.
-```
-
-### 2. 작은 업무 규칙 추가
+### 1. Change the domain
 
 ```text
-대여 중인 자산은 삭제할 수 없고, overdue 상태는 승인 없이 member가 변경할 수 없게 한다.
-먼저 실패 테스트를 src/lib/transitions.test.ts에 추가한 뒤 최소 구현을 적용하라.
-기존 사용자의 미커밋 변경과 Excel 사용자 정의 열 보존 로직은 건드리지 마라.
+Turn this repository from a library app into an internal equipment loan app.
+First review only src/lib/domain.ts and the Workbook table contract, and propose a change plan.
+Map the existing entities, such as Books→Assets and Loans→Checkouts,
+and propose received, ready, checked_out, due, returned and outbound states.
+Before changing any file, explain how you will keep id/version, relations, server RBAC and Excel compatibility.
 ```
 
-### 3. 다국어 UI 추가
+### 2. Add a small business rule
 
 ```text
-새로운 권종과 상태만 한국어/영어로 추가한다.
-src/lib/i18n.ts의 키 구조를 따르고 문자열 하드코딩을 피하라.
-기존 UI 테스트를 갱신하고 한국어 전환, html lang, 관리자 메뉴 가시성을 검증하라.
+An asset on loan cannot be deleted, and a member cannot change the overdue state without approval.
+First add a failing test to src/lib/transitions.test.ts, then implement only enough to make it pass.
+Do not touch the user's uncommitted changes or the logic that preserves columns users added in Excel.
 ```
 
-### 4. 3D 표시를 다른 자산에 적응
+### 3. Add multilingual UI
 
 ```text
-서가 시각화를 창고 선반 위치로 바꾼다.
-도메인 필드와 layout 계산을 먼저 분리하고, 3D 렌더링은 실제 데이터가 없는 경우에도
-접근 가능한 목록 정보로 대체되도록 유지하라.
+Add only the new asset types and states in Korean and English.
+Follow the key structure of src/lib/i18n.ts and do not hard-code strings.
+Update the existing UI tests and verify the Korean switch, html lang and admin menu visibility.
 ```
 
-## AI 작업을 작게 나누는 방법
+### 4. Adapt the 3D view to other assets
 
-좋은 작업 단위는 다음처럼 “계약 → 구현 → 테스트 → 설명”이 확인 가능한 크기입니다.
+```text
+Change the shelf visualization to warehouse rack positions.
+Separate the domain fields and the layout calculation first, and keep showing
+accessible list information instead of 3D when there is no real data.
+```
 
-1. `git status`와 diff를 읽어 현재 사용자 변경을 보존할 계획을 세운다.
-2. 한 기능의 상태·역할·표 계약을 먼저 정리한다.
-3. 실패하는 단위/UI 테스트를 추가한다.
-4. 도메인·서버·UI를 순서대로 최소 변경한다.
-5. `npm run typecheck`, `npm run lint`, 대상 `npm test`, `npm run build`를 실행한다.
-6. 바뀐 workbook 스키마가 있으면 생성 파일과 표 이름·열을 확인한다.
+## Breaking AI work into small pieces
 
-AI에게 매 단계 다음 제약을 반복하는 것이 좋습니다.
+A good unit of work is one where you can check "contract → implementation → tests → explanation"
+in one pass.
 
-> 현재 작업 트리의 관련 없는 변경을 덮어쓰지 말고, 관련 파일만 수정해라. 보안·권한 검사는
-> 클라이언트뿐 아니라 서버에도 적용하고, 하드코딩된 실제 데이터나 secret을 추가하지 마라.
-> 변경 후 테스트와 빌드 명령, 결과, 남은 불확실성을 보고하라.
+1. Read `git status` and the diff, and decide how to keep the user's existing changes.
+2. Settle the states, roles and table contract of one feature first.
+3. Add a failing unit or UI test.
+4. Change only what is needed, in the order domain, server, UI.
+5. Run `npm run typecheck`, `npm run lint`, the relevant `npm test`, and `npm run build`.
+6. If the workbook schema changed, check the newly generated file and its table names and columns.
 
-## 정의가 끝났는지 확인하는 체크리스트
+It helps to repeat these rules to the AI at every step:
 
-- [ ] 모든 엔티티에 고유 `id`와 `version`이 있다.
-- [ ] 각 상태 전이에 허용 역할과 선행 상태가 있다.
-- [ ] 관리자 메뉴와 API 권한이 모두 역할을 따르며, 회원 화면에는 관리자 링크가 없다.
-- [ ] Excel 표와 demo 데이터가 같은 계약을 사용한다.
-- [ ] 기존 workbook의 선택 열/사용자 정의 열이 보존된다.
-- [ ] 다국어 화면에 문자열 누락이나 영어 하드코딩이 없다.
-- [ ] 3D 또는 시각화가 실패해도 목록과 상태 정보로 업무를 계속할 수 있다.
-- [ ] 입고/등록, 대출/체크아웃, 만기·연체, 반납/출고 테스트가 있다.
-- [ ] 실제 Graph 자격 증명 없이 가능한 검증과 운영 자격 증명이 필요한 검증을 구분했다.
+> Do not overwrite unrelated changes in the working tree; change only the relevant files. Put
+> security and permission checks on the server, not only in the browser, and do not hard-code real
+> data or secrets. After the change, report the test and build commands you ran, their results,
+> and anything that is still uncertain.
 
-## 이 예제가 적합한 범위
+## Checklist: is the definition complete?
 
-- 사용자 수가 적고 Excel 공동 편집·확인 경험이 중요한 업무
-- 등록, 요청, 승인, 대출, 반납, 만기, 위치 같은 명확한 상태 머신
-- AI를 통해 반복적으로 요구사항을 좁히고 화면과 규칙을 검증하려는 팀
-- PostgreSQL이나 ERP를 도입하기 전에 실제 업무 흐름을 증명하려는 프로젝트
+- [ ] Every entity has a unique `id` and a `version`.
+- [ ] Every state transition has its allowed roles and required previous state.
+- [ ] The admin menu and API permissions both follow roles, and the member view has no admin links.
+- [ ] The Excel tables and the demo data use the same contract.
+- [ ] Optional columns and user-added columns in existing workbooks are preserved.
+- [ ] The multilingual UI has no missing strings and no hard-coded English.
+- [ ] If 3D or visualization fails, people can keep working with lists and status information.
+- [ ] There are tests for intake/registration, loan/checkout, due/overdue and return/outbound.
+- [ ] Checks that work without real Graph credentials are separated from checks that need production credentials.
 
-사용량과 동시성이 커지면 이 코드의 UI·도메인 규칙은 유지한 채 repository adapter를 transactional
-저장소로 바꾸십시오. Excel은 영원한 기본값이 아니라 **낮은 시작 비용으로 시작하고 실제 사용을
-검증할 수 있는 데이터 원본**입니다.
+## Where this example fits well
+
+- Work with few users where viewing and editing together in Excel matters
+- Flows with clearly separated states such as registration, request, approval, loan, return, due date and location
+- Teams that want to narrow requirements back and forth with AI and verify screens and rules
+- Projects that want to prove a real workflow before adopting PostgreSQL or an ERP
+
+When usage and concurrency grow, keep the UI and domain rules and swap the repository adapter for a
+transactional store. Excel is not a default you must keep forever; it is **a data source that lets
+you start cheaply and confirm real use**.

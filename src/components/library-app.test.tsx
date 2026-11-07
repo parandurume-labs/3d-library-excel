@@ -75,6 +75,33 @@ describe("LibraryApp", () => {
     expect(document.documentElement.lang).toBe("ko");
   });
 
+  it("opens the About & guide page from the home strip and the sidebar, in both languages", async () => {
+    render(<LibraryApp />);
+    await screen.findByText("LOCAL DEMO DATA");
+    expect(screen.getByText(/built so the benefits of technology reach everyone/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /Why we built this/ }));
+    expect(await screen.findByRole("heading", { level: 1, name: "So that technology reaches everyone." })).toBeVisible();
+    expect(screen.getByRole("button", { name: "About & guide" })).toHaveClass("active");
+    const guideLink = screen.getByRole("link", { name: /Read the AI guide.*opens in a new tab/ });
+    expect(guideLink).toHaveAttribute("href", "https://github.com/parandurume-labs/3d-library-excel/blob/main/docs/ai-adaptation-guide.md");
+    for (const link of screen.getAllByRole("link")) {
+      if (link.getAttribute("target") === "_blank") expect(link.getAttribute("rel")).toContain("noreferrer");
+    }
+    expect(screen.getByText("Microsoft Graph")).toBeVisible();
+    expect(screen.getByRole("link", { name: /MVP profile/ })).toHaveAttribute("href", "https://mvp.microsoft.com/en-US/MVP/profile/b4ef6855-0cce-ed11-a7c6-000d3a5603d3");
+    expect(screen.getByText("Microsoft Foundry")).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Language"), { target: { value: "ko" } });
+    expect(await screen.findByRole("heading", { level: 1, name: "기술의 혜택이 모두에게 두루 닿도록" })).toBeVisible();
+    expect(screen.getByText("이 가이드를 인공지능에게 건네주세요.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "인공지능을 위한 가이드 읽기(새 탭에서 열림)" })).toHaveAttribute("href", "https://github.com/parandurume-labs/3d-library-excel/blob/main/docs/ai-adaptation-guide.ko.md");
+
+    fireEvent.click(screen.getByRole("button", { name: "3D 도서관에서 둘러보기" }));
+    expect(await screen.findByText("원하는 서가 앞에 서 보세요.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "소개와 가이드" }));
+    expect(await screen.findByText("인공지능은 누구 손에 있느냐에 달렸습니다")).toBeVisible();
+  });
+
   it("shows the administration menu only for administrators and leaves it when the role changes", async () => {
     const state = createDemoState();
     vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
