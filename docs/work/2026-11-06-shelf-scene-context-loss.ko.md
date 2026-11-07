@@ -12,7 +12,7 @@
 
 ### 재현 절차
 
-조건: `npm run dev`(Next.js 15.5 개발 서버, 데모 모드), Chromium, 뷰포트 1440x900, 캐시 없는 첫 방문.
+조건: `npm run dev`(Next.js 15.5 개발 서버, 데모 모드), Chromium, 뷰포트 1440×900, 캐시 없는 첫 방문.
 
 1. `http://localhost:3000`을 연다.
 2. "Explore shelves" 화면의 3D 서가를 3초 동안 지켜본다.
@@ -94,7 +94,7 @@
     (`expected document not to contain element, found <div data-testid="outside-fallback" />`)
   - 수정 후 `npx vitest run`: 5 파일, 19 테스트 통과
   - `npx tsc --noEmit`: 종료 코드 0 · `npx eslint .`: 종료 코드 0
-- 증거 묶음 (브라우저, `next dev -p 3100`, Chromium 헤드리스, 1440x900, 첫 로딩 뒤 10초 관찰):
+- 증거 묶음 (브라우저, `next dev -p 3100`, Chromium 헤드리스, 1440×900, 첫 로딩 뒤 10초 관찰):
 
   | | 첫 로딩 `isContextLost()` | Canvas 숨김 횟수 | `loseContext()` 호출 | 메뉴 왕복 뒤 `isContextLost()` |
   |---|---|---|---|---|

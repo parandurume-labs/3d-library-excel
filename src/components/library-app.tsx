@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   AlertTriangle,
+  Award,
   Bell,
   BookOpen,
   Box,
@@ -29,8 +30,9 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { Actor, Book, LibraryAction, LibrarySnapshot, Loan, Reservation, Shelf, User } from "@/lib/domain";
 import { CLASS_LABELS } from "@/lib/domain";
+import AboutPage from "./about-page";
 import Library3DPage from "./library-3d-page";
-import { COPY, floorLabel, getBookDisplay, getClassLabel, getLocationDisplay, getShelfDisplay, type Copy, type Locale } from "@/lib/i18n";
+import { ABOUT_COPY, COPY, floorLabel, getBookDisplay, getClassLabel, getLocationDisplay, getShelfDisplay, type Copy, type Locale } from "@/lib/i18n";
 
 const ShelfScene = dynamic(() => import("./shelf-scene"), {
   ssr: false,
@@ -38,7 +40,7 @@ const ShelfScene = dynamic(() => import("./shelf-scene"), {
 });
 
 type LoadedSnapshot = LibrarySnapshot & { actor: Actor };
-type Tab = "explore" | "library3d" | "my-library" | "admin";
+type Tab = "explore" | "library3d" | "my-library" | "admin" | "about";
 type StatusTone = "available" | "borrowed" | "requested";
 
 function statusFor(book: Book, snapshot: LoadedSnapshot, copy: Copy = COPY.en): { label: string; tone: StatusTone } {
@@ -279,7 +281,7 @@ export default function LibraryApp() {
         </nav>
         <div className="sidebar-bottom">
           <div className="profile-row"><span className="avatar">{initials(actorUser?.displayName ?? "Demo")}</span><div><strong>{actorUser?.displayName}</strong><span>{actorUser?.role === "admin" ? copy.librarian : copy.member} {copy.account}</span></div></div>
-          <button><CircleHelp />{copy.helpGuides}</button>
+          <button className={tab === "about" ? "active" : ""} onClick={() => { setTab("about"); setNavOpen(false); }}><CircleHelp />{copy.helpGuides}</button>
         </div>
       </aside>
       {navOpen && <button aria-label={copy.closeMenu} className="nav-backdrop" onClick={() => setNavOpen(false)} />}
@@ -294,6 +296,11 @@ export default function LibraryApp() {
               <div><span className="eyebrow">{copy.collectionInSpace}</span><h1>{copy.nextRead}</h1><p>{copy.exploreDescription}</p></div>
               <div className="heading-stats"><span><strong>{snapshot.state.books.length}</strong> {copy.books}</span><i /><span><strong>{available}</strong> {copy.available}</span><i /><span><strong>{snapshot.state.shelves.length}</strong> {copy.shelves}</span></div>
             </div>
+            <aside className="mission-strip">
+              <span className="mvp-badge"><Award />Microsoft MVP</span>
+              <p>{ABOUT_COPY[locale].missionStrip}</p>
+              <button type="button" onClick={() => setTab("about")}>{ABOUT_COPY[locale].missionLink}<ChevronRight /></button>
+            </aside>
 
             <section className="scene-card">
               <div className="scene-toolbar">
@@ -373,6 +380,8 @@ export default function LibraryApp() {
             statusOf={statusOf}
           />
         )}
+
+        {tab === "about" && <AboutPage locale={locale} open3dLabel={copy.open3dLibrary} onOpen3d={() => { focusShelf(null); setTab("library3d"); }} />}
 
         {tab === "my-library" && (
           <MemberDashboard snapshot={snapshot} ownLoans={ownLoans} ownReservations={ownReservations} busy={busy} act={act} locale={locale} copy={copy} />
