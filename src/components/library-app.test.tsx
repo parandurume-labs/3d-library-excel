@@ -75,13 +75,13 @@ describe("LibraryApp", () => {
     expect(document.documentElement.lang).toBe("ko");
   });
 
-  it("opens the About & guide page from the home strip and the sidebar, in both languages", async () => {
+  it("opens the About Project page from the home strip and the sidebar, in both languages", async () => {
     render(<LibraryApp />);
     await screen.findByText("LOCAL DEMO DATA");
     expect(screen.getByText(/built so the benefits of technology reach everyone/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /Why we built this/ }));
     expect(await screen.findByRole("heading", { level: 1, name: "So that technology reaches everyone." })).toBeVisible();
-    expect(screen.getByRole("button", { name: "About & guide" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "About Project" })).toHaveClass("active");
     const guideLink = screen.getByRole("link", { name: /Read the AI guide.*opens in a new tab/ });
     expect(guideLink).toHaveAttribute("href", "https://github.com/parandurume-labs/3d-library-excel/blob/main/docs/ai-adaptation-guide.md");
     for (const link of screen.getAllByRole("link")) {
@@ -98,7 +98,7 @@ describe("LibraryApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "3D 도서관에서 둘러보기" }));
     expect(await screen.findByText("원하는 서가 앞에 서 보세요.")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "소개와 가이드" }));
+    fireEvent.click(screen.getByRole("button", { name: "프로젝트 안내" }));
     expect(await screen.findByText("인공지능은 누구 손에 있느냐에 달렸습니다")).toBeVisible();
   });
 
