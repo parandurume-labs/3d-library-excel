@@ -38,8 +38,13 @@ database.
 | 3 | `src/lib/demo-data.ts`, `scripts/generate-workbook.ts` | New sample data and Excel table generation |
 | 4 | `src/lib/repositories/` | Keep or extend the local/Excel adapters against the existing contract |
 | 5 | `src/app/api/` | Validation of new actions and server-side RBAC |
-| 6 | `src/components/`, `src/lib/i18n.ts` | List, detail and dashboard UI, and multilingual strings |
+| 6 | `src/components/`, `src/lib/i18n.ts`, `src/lib/journey.ts` | List, detail and dashboard UI, multilingual strings and Journey Tour |
 | 7 | `*.test.ts`, `*.test.tsx` | State transitions, permissions, menu visibility, UI regression tests |
+
+Journey Tour in `src/lib/journey.ts` explains every feature to first-time users, in both
+languages. When you rename the domain (books to equipment, loans to checkouts), rewrite those
+explanations too. Each step finds its screen element through a `data-tour` attribute, so keep the
+attribute when you move or rebuild that part of the UI, and add a step when you add a feature.
 
 It is safest to change `domain.ts` and the workbook generator together first, pin the contract with
 tests, and only then change the UI. If you ask for several layers at once, it becomes hard to find
@@ -124,6 +129,7 @@ It helps to repeat these rules to the AI at every step:
 - [ ] Optional columns and user-added columns in existing workbooks are preserved.
 - [ ] The multilingual UI has no missing strings and no hard-coded English.
 - [ ] If 3D or visualization fails, people can keep working with lists and status information.
+- [ ] Every journey step in `src/lib/journey.ts` still points at a `data-tour` element and describes the new domain.
 - [ ] There are tests for intake/registration, loan/checkout, due/overdue and return/outbound.
 - [ ] Checks that work without real Graph credentials are separated from checks that need production credentials.
 

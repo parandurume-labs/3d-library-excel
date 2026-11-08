@@ -39,7 +39,7 @@ export default function AboutPage({ locale, onOpen3d, open3dLabel }: { locale: L
         })}
       </ol>
 
-      <section className="about-guide" aria-labelledby="about-guide-title">
+      <section className="about-guide" aria-labelledby="about-guide-title" data-tour="about-guide">
         <div>
           <span className="eyebrow">{about.guideEyebrow}</span>
           <h2 id="about-guide-title">{about.guideTitle}</h2>

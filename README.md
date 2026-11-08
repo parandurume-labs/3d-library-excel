@@ -48,7 +48,7 @@ people.
 
 Even without deep coding knowledge, you can hand this guide to an AI and turn the library app, step
 by step, into an equipment loan, teaching materials or room booking app. The same content is in the
-app under **About & guide**.
+app under **About Project**.
 
 ## Social impact
 
@@ -100,6 +100,7 @@ lets you walk through every user flow.
 
 - 3D shelf rotation and zoom, shelf and location selection, search and classification filters
 - 3D library page: walk up to a shelf, return to the whole view, hover a book to see its details
+- Journey Tour for first-time users: a guided tour that highlights each feature on the real screen, and a feature manual with a "Show me" button for every feature
 - Korean/English UI switch and per-language data display
 - DDC/KDC display switch, and finding a book's position on the 3D shelf while the detail panel stays open
 - Registration (intake), loan requests, reservations, return requests, due date and overdue display with notifications
@@ -128,7 +129,29 @@ Open `http://localhost:3000`. You should see `LOCAL DEMO DATA` at the top of the
 - Default administrator: stable ID `user-demo-admin`, name `Demo Librarian`
 - The admin menu and `Admin desk` appear only in `Admin view`. The member view does not even show the link.
 - Demo email addresses are `*.example.invalid` addresses, not real accounts.
-- `About & guide` at the bottom of the sidebar shows why the project exists, the tech stack and the guide for AI.
+- `About Project` at the bottom of the sidebar shows why the project exists, the tech stack and the guide for AI.
+
+### Your first visit: Journey Tour
+
+On a first visit, a **New here?** card at the top of the home screen offers a two-minute tour. The
+tour dims the page, highlights one feature at a time on the real screen and explains how to use it.
+It moves between screens by itself, and you can go back, skip ahead or close it (Esc) at any time.
+
+| Order | Chapter | What the tour highlights |
+| --- | --- | --- |
+| 1 | Find a book | Search, the 3D floor plan, subject and DDC/KDC filters, book cards and details |
+| 2 | Walk the 3D library | Standing in front of a shelf and finding a book on it |
+| 3 | Borrow and keep track | My library (loans, due dates, return requests, reservations) and notifications |
+| 4 | Set up your screen | Language switch and, in the demo, the member/admin switch |
+| 5 | Run the library | Approvals and returns, members and roles, catalog and shelf placement (admins only) |
+| 6 | Make it yours | The guide for adapting the app with AI |
+
+- A member in the demo can press **Switch to admin view** on the role step, and the tour continues
+  into the admin desk.
+- **Journey Tour** at the bottom of the sidebar is the feature manual: every feature with a short
+  how-to and a **Show me** button that jumps to it on screen. Use it to restart the tour as well.
+- The browser remembers that the offer was started or dismissed (`localStorage` key
+  `durume-journey-v1`). Delete that key to see the first-visit card again.
 
 Demo changes live only in the Node.js process memory, so restarting the server resets them. Do not
 use the demo for real user or production data.
@@ -412,6 +435,7 @@ saved to the production file.
 Without credentials you can verify:
 
 - The local demo UI, 3D shelves and the 3D library page, search, DDC/KDC switching
+- The journey tour and feature manual, including the switch into the admin view
 - Member loan, reservation and return requests; admin approval and return processing
 - Server RBAC, duplicate prevention, state transitions, demo data conflict handling
 - Workbook generation with 500+ books; Excel table name, column and relation validation
@@ -438,7 +462,7 @@ npm run build
 
 Tests cover synthetic workbook integrity, 500+ books, stable IDs and relations, state
 transitions, duplicate prevention, RBAC, optimistic concurrency conflicts, Graph adapter mocks,
-search and detail behavior in the UI, and camera moves in the 3D shelves.
+search and detail behavior in the UI, camera moves in the 3D shelves, and the journey tour.
 
 ## Architecture and operating limits
 

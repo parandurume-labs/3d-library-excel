@@ -236,7 +236,7 @@ export default function Library3DPage({ state, locale, copy, classSystem, focusS
         </div>
       )}
 
-      <section className="scene-card library3d-card">
+      <section className="scene-card library3d-card" data-tour="library3d">
         <div className="scene-toolbar library3d-toolbar">
           <nav className="scene-breadcrumb" aria-label={copy.library3d}>
             {focusShelf ? <button onClick={() => onFocusShelf(null)}>{copy.library3d}</button> : <strong>{copy.library3d}</strong>}

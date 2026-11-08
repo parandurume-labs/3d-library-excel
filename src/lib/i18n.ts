@@ -34,7 +34,7 @@ export const COPY = {
     librarian: "Librarian",
     member: "Member",
     account: "account",
-    helpGuides: "About & guide",
+    helpGuides: "About Project",
     collectionInSpace: "YOUR COLLECTION, IN SPACE",
     nextRead: "Find your next great read.",
     exploreDescription: "Explore every shelf, check availability, and send a request in seconds.",
@@ -204,7 +204,7 @@ export const COPY = {
     librarian: "사서",
     member: "회원",
     account: "계정",
-    helpGuides: "소개와 가이드",
+    helpGuides: "프로젝트 안내",
     collectionInSpace: "공간에서 만나는 장서",
     nextRead: "다음에 읽을 책을 찾아보세요.",
     exploreDescription: "서가를 둘러보고, 빌릴 수 있는지 확인한 뒤 바로 신청하세요.",
@@ -389,7 +389,7 @@ export const AI_GUIDE_KO_URL = `${REPO_URL}/blob/main/docs/ai-adaptation-guide.k
 export const LICENSE_URL = `${REPO_URL}/blob/main/LICENSE`;
 export const MVP_PROFILE_URL = "https://mvp.microsoft.com/en-US/MVP/profile/b4ef6855-0cce-ed11-a7c6-000d3a5603d3";
 
-/** Copy for the "About & guide" page and the mission strip on the home screen. */
+/** Copy for the "About Project" page and the mission strip on the home screen. */
 export const ABOUT_COPY = {
   en: {
     missionStrip: "An open-source example by a Microsoft MVP, built so the benefits of technology reach everyone.",
